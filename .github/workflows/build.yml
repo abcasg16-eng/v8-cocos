@@ -83,7 +83,7 @@ jobs:
           cp -r ./include ./dist/
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: v8-mac-${{ matrix.arch }}
           path: ./dist
@@ -211,7 +211,7 @@ jobs:
           cp -r ./include ./dist/
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: v8-ios-${{ matrix.arch }}
           path: ./dist
@@ -308,11 +308,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Install NDK r23c
+      - name: Install NDK r28b
         uses: nttld/setup-ndk@v1
         id: setup-ndk
         with:
-          ndk-version: r23c
+          ndk-version: r28b
           add-to-path: false
           local-cache: true
 
@@ -394,7 +394,7 @@ jobs:
           cp -r ./include ./dist/
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: v8-android-${{ matrix.arch }}
           path: ./dist
@@ -544,7 +544,7 @@ jobs:
           cp -r ./include ./dist/
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: v8-windows-${{ matrix.arch }}-${{ matrix.build_type }}
           path: ./dist
@@ -787,7 +787,7 @@ jobs:
           cp -r ./include ./dist/
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: v8-oh-${{ matrix.arch }}
           path: ./dist
@@ -917,7 +917,7 @@ jobs:
           cp -r ./include ./dist/
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: v8-linux-${{ matrix.arch }}
           path: ./dist
