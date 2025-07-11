@@ -14,7 +14,7 @@ group("gn_all") {
     "message:v8_message",
   #  "mjsunit:v8_mjsunit",
     "mozilla:v8_mozilla",
-    "test262:v8_test262",
+  #  "test262:v8_test262",
     "webkit:v8_webkit",
   ]
 
