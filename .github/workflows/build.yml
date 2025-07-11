@@ -25,7 +25,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Select XCode Version
         uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd
@@ -45,6 +45,12 @@ jobs:
           echo "${{ env.DEPOT_TOOLS_PATH }}"
           ls -l ${{ env.DEPOT_TOOLS_PATH }}
           xcrun clang++ -v
+
+      - name: set python
+        run: |
+          export PATH=${{ env.DEPOT_TOOLS_PATH }}:$PATH
+          export DEPOT_TOOLS_UPDATE=0
+          ${{ env.DEPOT_TOOLS_PATH }}/ensure_bootstrap
 
       - name: Install gn
         run: |
@@ -141,7 +147,7 @@ jobs:
     runs-on: macos-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Select XCode Version
         uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd
@@ -161,6 +167,12 @@ jobs:
           echo "${{ env.DEPOT_TOOLS_PATH }}"
           ls -l ${{ env.DEPOT_TOOLS_PATH }}
           xcrun clang++ -v
+
+      - name: set python
+        run: |
+          export PATH=${{ env.DEPOT_TOOLS_PATH }}:$PATH
+          export DEPOT_TOOLS_UPDATE=0
+          ${{ env.DEPOT_TOOLS_PATH }}/ensure_bootstrap
 
       - name: Install gn
         run: |
@@ -306,7 +318,7 @@ jobs:
           fi
 
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install NDK r28b
         uses: nttld/setup-ndk@v1
@@ -328,6 +340,12 @@ jobs:
         run: |
           echo "${{ env.DEPOT_TOOLS_PATH }}"
           ls -l ${{ env.DEPOT_TOOLS_PATH }}
+	  
+      - name: set python
+        run: |
+          export PATH=${{ env.DEPOT_TOOLS_PATH }}:$PATH
+          export DEPOT_TOOLS_UPDATE=0
+          ${{ env.DEPOT_TOOLS_PATH }}/ensure_bootstrap	  
 
       - name: Install gn
         run: |
@@ -368,8 +386,6 @@ jobs:
             sed -i "s@#error@//#error@g" src/base/ubsan.cc
           fi
 
-          rm $NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/lib64/clang/12.0.9/lib/linux/x86_64/libatomic.a
-          rm $NDK_ROOT/toolchains/llvm/prebuilt/linux-x86_64/lib64/clang/12.0.9/lib/linux/i386/libatomic.a
         env:
             NDK_ROOT: ${{ steps.setup-ndk.outputs.ndk-path }}
 
@@ -471,7 +487,7 @@ jobs:
     runs-on: windows-2019
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - uses: actions/setup-python@v4
         with:
@@ -491,6 +507,12 @@ jobs:
           echo "env.IS_DEBUG=${{ env.IS_DEBUG }}"
           echo "----- python version -----"
           python --version
+
+      - name: set python
+        run: |
+          export PATH=${{ env.DEPOT_TOOLS_PATH }}:$PATH
+          export DEPOT_TOOLS_UPDATE=0
+          ${{ env.DEPOT_TOOLS_PATH }}/ensure_bootstrap
 
       - name: Clone DepotTools
         shell: bash
@@ -631,7 +653,7 @@ jobs:
             echo "/usr/lib/x86_64-linux-gnu doesn't not exist."
           fi
           
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - uses: actions/setup-java@v3
         id: setup-jdk
         with:
@@ -709,6 +731,12 @@ jobs:
         run: |
           echo "${{ env.DEPOT_TOOLS_PATH }}"
           ls -l ${{ env.DEPOT_TOOLS_PATH }}
+
+      - name: set python
+        run: |
+          export PATH=${{ env.DEPOT_TOOLS_PATH }}:$PATH
+          export DEPOT_TOOLS_UPDATE=0
+          ${{ env.DEPOT_TOOLS_PATH }}/ensure_bootstrap
 
       - name: Install gn
         run: |
@@ -849,7 +877,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Clone DepotTools
         run: |
@@ -863,6 +891,12 @@ jobs:
         run: |
           echo "${{ env.DEPOT_TOOLS_PATH }}"
           ls -l ${{ env.DEPOT_TOOLS_PATH }}
+
+      - name: set python
+        run: |
+          export PATH=${{ env.DEPOT_TOOLS_PATH }}:$PATH
+          export DEPOT_TOOLS_UPDATE=0
+          ${{ env.DEPOT_TOOLS_PATH }}/ensure_bootstrap
 
       - name: Install gn
         run: |
