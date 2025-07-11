@@ -49,6 +49,7 @@ treat_warnings_as_errors=false
 symbol_level=0
 v8_enable_webassembly=true
 use_cxx17=true
+v8_enable_fuzztest=false
 v8_enable_sandbox=false"
 
 if [[ "${ARCH}" == "arm" ]]; then
