@@ -340,7 +340,7 @@ jobs:
         run: |
           echo "${{ env.DEPOT_TOOLS_PATH }}"
           ls -l ${{ env.DEPOT_TOOLS_PATH }}
-	  
+
       - name: set python
         run: |
           export PATH=${{ env.DEPOT_TOOLS_PATH }}:$PATH
