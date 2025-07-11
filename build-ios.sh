@@ -3,7 +3,6 @@
 set -e
 
 XCODE_DEVELOPER_PATH=$(xcode-select -p)
-export PATH="${XCODE_DEVELOPER_PATH}/Toolchains/XcodeDefault.xctoolchain/usr/bin:$PATH"
 
 ARCH=$1
 TARGET_ENV=$2
@@ -28,12 +27,9 @@ v8_enable_i18n_support=false
 treat_warnings_as_errors=false
 symbol_level=0
 v8_enable_webassembly=false
-use_cxx17 = true
-clang_version = "17" 
+use_cxx17=true
+v8_enable_fuzztest=false
 v8_enable_sandbox=false
-enable_rust_cxx=false
-enable_rust=false
-v8_enable_temporal_support=false
 ios_deployment_target=\"11.0\"
 ios_enable_code_signing=false"
 

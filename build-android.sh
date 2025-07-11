@@ -47,6 +47,7 @@ android_ndk_version=\"r28b\"
 android32_ndk_api_level=21
 android64_ndk_api_level=21
 use_custom_libunwind=false
+v8_enable_fuzztest=false
 use_ml_inliner=false"
 
 
