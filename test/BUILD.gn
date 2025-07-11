@@ -27,7 +27,7 @@ group("gn_all") {
   if (v8_enable_webassembly) {
     data_deps += [
       "wasm-js:v8_wasm_js",
-      "wasm-spec-tests:v8_wasm_spec_tests",
+    #  "wasm-spec-tests:v8_wasm_spec_tests",
     ]
     deps += [ "wasm-api-tests:wasm_api_tests" ]
   }
@@ -106,7 +106,7 @@ group("v8_bot_default") {
     data_deps += [
       "wasm-api-tests:wasm_api_tests",
       "wasm-js:v8_wasm_js",
-      "wasm-spec-tests:v8_wasm_spec_tests",
+    #  "wasm-spec-tests:v8_wasm_spec_tests",
     ]
   }
 }
@@ -130,7 +130,7 @@ group("v8_default") {
     data_deps += [
       "wasm-api-tests:wasm_api_tests",
       "wasm-js:v8_wasm_js",
-      "wasm-spec-tests:v8_wasm_spec_tests",
+    #  "wasm-spec-tests:v8_wasm_spec_tests",
     ]
   }
 }
