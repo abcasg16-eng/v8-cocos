@@ -72,7 +72,18 @@ test(() => {
       assert_unreached(`Should not call [[HasProperty]] with ${x}`);
     },
     get(o, x) {
-      return 0;
+      // Due to the requirement not to supply both minimum and initial, we need to ignore one of them.
+      switch (x) {
+        case "shared":
+          return false;
+        case "initial":
+        case "maximum":
+          return 0;
+        case "index":
+          return "i32";
+        default:
+          return undefined;
+      }
     },
   });
   new WebAssembly.Memory(proxy);
@@ -128,3 +139,25 @@ test(() => {
   const memory = new WebAssembly.Memory(argument, {});
   assert_Memory(memory, { "size": 0 });
 }, "Stray argument");
+
+test(() => {
+  const argument = { "initial": 1 };
+  const memory = new WebAssembly.Memory(argument);
+  assert_Memory(memory, { "size": 1, "index": "i32" });
+}, "Memory with index parameter omitted");
+
+test(() => {
+  const argument = { "initial": 1, "index": "i32" };
+  const memory = new WebAssembly.Memory(argument);
+  assert_Memory(memory, { "size": 1, "index": "i32" });
+}, "Memory with i32 index constructor");
+
+test(() => {
+  const argument = { "initial": 1, "index": "i64" };
+  const memory = new WebAssembly.Memory(argument);
+  assert_Memory(memory, { "size": 1, "index": "i64" });
+}, "Memory with i64 index constructor");
+
+test(() => {
+  assert_throws_js(TypeError, () => new WebAssembly.Memory({ "initial": 1, "index": "none" }));
+}, "Unknown memory index");

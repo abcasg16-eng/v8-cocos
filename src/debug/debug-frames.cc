@@ -78,8 +78,8 @@ Handle<String> FrameInspector::GetFunctionName() {
 #if V8_ENABLE_WEBASSEMBLY
   if (IsWasm()) {
     auto wasm_frame = WasmFrame::cast(frame_);
-    auto wasm_instance = handle(wasm_frame->wasm_instance(), isolate_);
-    return GetWasmFunctionDebugName(isolate_, wasm_instance,
+    auto instance_data = handle(wasm_frame->trusted_instance_data(), isolate_);
+    return GetWasmFunctionDebugName(isolate_, instance_data,
                                     wasm_frame->function_index());
   }
 #endif  // V8_ENABLE_WEBASSEMBLY
@@ -97,13 +97,12 @@ bool FrameInspector::ParameterIsShadowedByContextLocal(
   return info->ContextSlotIndex(parameter_name) != -1;
 }
 
-RedirectActiveFunctions::RedirectActiveFunctions(SharedFunctionInfo shared,
-                                                 Mode mode)
+RedirectActiveFunctions::RedirectActiveFunctions(
+    Isolate* isolate, Tagged<SharedFunctionInfo> shared, Mode mode)
     : shared_(shared), mode_(mode) {
-  DCHECK(shared.HasBytecodeArray());
-  if (mode == Mode::kUseDebugBytecode) {
-    DCHECK(shared.HasDebugInfo());
-  }
+  DCHECK(shared->HasBytecodeArray());
+  DCHECK_IMPLIES(mode == Mode::kUseDebugBytecode,
+                 shared->HasDebugInfo(isolate));
 }
 
 void RedirectActiveFunctions::VisitThread(Isolate* isolate,
@@ -111,14 +110,15 @@ void RedirectActiveFunctions::VisitThread(Isolate* isolate,
   for (JavaScriptStackFrameIterator it(isolate, top); !it.done();
        it.Advance()) {
     JavaScriptFrame* frame = it.frame();
-    JSFunction function = frame->function();
+    Tagged<JSFunction> function = frame->function();
     if (!frame->is_interpreted()) continue;
-    if (function.shared() != shared_) continue;
+    if (function->shared() != shared_) continue;
     InterpretedFrame* interpreted_frame =
         reinterpret_cast<InterpretedFrame*>(frame);
-    BytecodeArray bytecode = mode_ == Mode::kUseDebugBytecode
-                                 ? shared_.GetDebugInfo().DebugBytecodeArray()
-                                 : shared_.GetBytecodeArray(isolate);
+    Tagged<BytecodeArray> bytecode =
+        mode_ == Mode::kUseDebugBytecode
+            ? shared_->GetDebugInfo(isolate)->DebugBytecodeArray(isolate)
+            : shared_->GetBytecodeArray(isolate);
     interpreted_frame->PatchBytecodeArray(bytecode);
   }
 }

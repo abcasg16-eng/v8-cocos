@@ -34,17 +34,24 @@ DIR_SOURCE_ROOT = os.path.relpath(
             os.path.dirname(__file__), os.pardir, os.pardir, os.pardir,
             os.pardir)))
 JAVA_HOME = os.path.join(DIR_SOURCE_ROOT, 'third_party', 'jdk', 'current')
+JAVA_PATH = os.path.join(JAVA_HOME, 'bin', 'java')
+JAVA_PATH_FOR_INPUTS = f'{JAVA_PATH}.chromium'
 JAVAC_PATH = os.path.join(JAVA_HOME, 'bin', 'javac')
 JAVAP_PATH = os.path.join(JAVA_HOME, 'bin', 'javap')
 KOTLIN_HOME = os.path.join(DIR_SOURCE_ROOT, 'third_party', 'kotlinc', 'current')
 KOTLINC_PATH = os.path.join(KOTLIN_HOME, 'bin', 'kotlinc')
 
+
 def JavaCmd(xmx='1G'):
-  ret = [os.path.join(JAVA_HOME, 'bin', 'java')]
+  ret = [JAVA_PATH]
   # Limit heap to avoid Java not GC'ing when it should, and causing
   # bots to OOM when many java commands are runnig at the same time
   # https://crbug.com/1098333
   ret += ['-Xmx' + xmx]
+  # JDK17 bug.
+  # See: https://chromium-review.googlesource.com/c/chromium/src/+/4705883/3
+  # https://github.com/iBotPeaches/Apktool/issues/3174
+  ret += ['-Djdk.util.zip.disableZip64ExtraFieldValidation=true']
   return ret
 
 
@@ -217,6 +224,7 @@ def CheckOutput(args,
   logging.info('CheckOutput: %s', ' '.join(args))
   child = subprocess.Popen(args,
       stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd, env=env)
+
   stdout, stderr = child.communicate()
 
   # For Python3 only:
@@ -448,7 +456,7 @@ def ExpandFileArgs(args):
   """
   new_args = list(args)
   file_jsons = dict()
-  r = re.compile('@FileArg\((.*?)\)')
+  r = re.compile(r'@FileArg\((.*?)\)')
   for i, arg in enumerate(args):
     match = r.search(arg)
     if not match:

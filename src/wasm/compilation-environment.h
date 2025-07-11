@@ -18,6 +18,7 @@
 
 namespace v8 {
 
+class CFunctionInfo;
 class JobHandle;
 
 namespace internal {
@@ -31,14 +32,19 @@ class WasmCode;
 class WasmEngine;
 class WasmError;
 
-enum RuntimeExceptionSupport : bool {
-  kRuntimeExceptionSupport = true,
-  kNoRuntimeExceptionSupport = false
-};
-
 enum DynamicTiering : bool {
   kDynamicTiering = true,
   kNoDynamicTiering = false
+};
+
+// Further information about a location for a deopt: A call_ref can either be
+// just an inline call (that didn't cause a deopt) with a deopt happening within
+// the inlinee or it could be the deopt point itself. This changes whether the
+// relevant stackstate is the one before the call or after the call.
+enum class LocationKindForDeopt : uint8_t {
+  kNone,
+  kEagerDeopt,   // The location is the point of an eager deopt.
+  kInlinedCall,  // The loation is an inlined call, not a deopt.
 };
 
 // The Arm architecture does not specify the results in memory of
@@ -59,24 +65,36 @@ struct CompilationEnv {
   // A pointer to the decoded module's static representation.
   const WasmModule* const module;
 
-  // If the runtime doesn't support exception propagation,
-  // we won't generate stack checks, and trap handling will also
-  // be generated differently.
-  const RuntimeExceptionSupport runtime_exception_support;
-
   // Features enabled for this compilation.
   const WasmFeatures enabled_features;
 
   const DynamicTiering dynamic_tiering;
 
+  const std::atomic<Address>* fast_api_targets;
+
+  std::atomic<bool>* fast_api_return_is_bool;
+
+  uint32_t deopt_info_bytecode_offset = std::numeric_limits<uint32_t>::max();
+  LocationKindForDeopt deopt_location_kind = LocationKindForDeopt::kNone;
+
+  // Create a {CompilationEnv} object for compilation. The caller has to ensure
+  // that the {WasmModule} pointer stays valid while the {CompilationEnv} is
+  // being used.
+  static inline CompilationEnv ForModule(const NativeModule* native_module);
+
+  static constexpr CompilationEnv NoModuleAllFeatures();
+
+ private:
   constexpr CompilationEnv(const WasmModule* module,
-                           RuntimeExceptionSupport runtime_exception_support,
-                           const WasmFeatures& enabled_features,
-                           DynamicTiering dynamic_tiering)
+                           WasmFeatures enabled_features,
+                           DynamicTiering dynamic_tiering,
+                           std::atomic<Address>* fast_api_targets,
+                           std::atomic<bool>* fast_api_return_is_bool)
       : module(module),
-        runtime_exception_support(runtime_exception_support),
         enabled_features(enabled_features),
-        dynamic_tiering(dynamic_tiering) {}
+        dynamic_tiering(dynamic_tiering),
+        fast_api_targets(fast_api_targets),
+        fast_api_return_is_bool(fast_api_return_is_bool) {}
 };
 
 // The wire bytes are either owned by the StreamingDecoder, or (after streaming)
@@ -165,6 +183,8 @@ class V8_EXPORT_PRIVATE CompilationState {
   void operator delete(void* ptr) { ::operator delete(ptr); }
 
   CompilationState() = delete;
+
+  size_t EstimateCurrentMemoryConsumption() const;
 
  private:
   // NativeModule is allowed to call the static {New} method.

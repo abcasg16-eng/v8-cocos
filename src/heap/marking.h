@@ -9,13 +9,14 @@
 
 #include "src/base/atomic-utils.h"
 #include "src/common/globals.h"
+#include "src/heap/marking-worklist.h"
 #include "src/objects/heap-object.h"
 #include "src/objects/map.h"
 #include "src/utils/utils.h"
 
 namespace v8::internal {
 
-class Page;
+class PageMetadata;
 
 class MarkBit final {
  public:
@@ -23,7 +24,12 @@ class MarkBit final {
   static_assert(sizeof(CellType) == sizeof(base::AtomicWord));
 
   V8_ALLOW_UNUSED static inline MarkBit From(Address);
-  V8_ALLOW_UNUSED static inline MarkBit From(HeapObject);
+  V8_ALLOW_UNUSED static inline MarkBit From(Tagged<HeapObject>);
+
+  // These methods are meant to be used from the debugger and therefore
+  // intentionally not inlined such that they are always available.
+  V8_ALLOW_UNUSED static MarkBit FromForTesting(Address);
+  V8_ALLOW_UNUSED static MarkBit FromForTesting(Tagged<HeapObject>);
 
   // The function returns true if it succeeded to
   // transition the bit from 0 to 1.
@@ -31,7 +37,7 @@ class MarkBit final {
   inline bool Set();
 
   template <AccessMode mode = AccessMode::NON_ATOMIC>
-  inline bool Get();
+  inline bool Get() const;
 
   // The function returns true if it succeeded to
   // transition the bit from 1 to 0. Only works in non-atomic contexts.
@@ -42,6 +48,9 @@ class MarkBit final {
     return cell_ == other.cell_ && mask_ == other.mask_;
   }
 #endif
+
+  const CellType* CellAddress() const { return cell_; }
+  CellType Mask() const { return mask_; }
 
  private:
   inline MarkBit(CellType* cell, CellType mask) : cell_(cell), mask_(mask) {}
@@ -66,12 +75,12 @@ inline bool MarkBit::Set<AccessMode::ATOMIC>() {
 }
 
 template <>
-inline bool MarkBit::Get<AccessMode::NON_ATOMIC>() {
+inline bool MarkBit::Get<AccessMode::NON_ATOMIC>() const {
   return (*cell_ & mask_) != 0;
 }
 
 template <>
-inline bool MarkBit::Get<AccessMode::ATOMIC>() {
+inline bool MarkBit::Get<AccessMode::ATOMIC>() const {
   return (base::AsAtomicWord::Acquire_Load(cell_) & mask_) != 0;
 }
 
@@ -105,9 +114,7 @@ class V8_EXPORT_PRIVATE MarkingBitmap final {
   // The size of the bitmap in bytes is CellsCount() * kBytesPerCell.
   static constexpr size_t kSize = kCellsCount * kBytesPerCell;
 
-  V8_INLINE static constexpr MarkBitIndex AddressToIndex(Address address) {
-    return (address & kPageAlignmentMask) >> kTaggedSizeLog2;
-  }
+  V8_INLINE static constexpr MarkBitIndex AddressToIndex(Address address);
 
   V8_INLINE static constexpr MarkBitIndex LimitAddressToIndex(Address address);
 
@@ -186,13 +193,15 @@ class V8_EXPORT_PRIVATE MarkingBitmap final {
     return MarkBit(cell, mask);
   }
 
-  // This method returns the highest address in the page that is lower than
-  // maybe_inner_ptr, has its markbit set, and whose previous address (if it
-  // exists) does not have its markbit set. This address is guaranteed to be
-  // the start of a valid object in the page. In case the markbit corresponding
-  // to maybe_inner_ptr is set, the function bails out and returns kNullAddress.
-  static inline Address FindPreviousObjectForConservativeMarking(
-      const Page* page, Address maybe_inner_ptr);
+  // This method provides a basis for inner-pointer resolution. It expects a
+  // page and a maybe_inner_ptr that is contained in that page. It returns the
+  // highest address in the page that is not larger than maybe_inner_ptr, has
+  // its markbit set, and whose previous address (if it exists) does not have
+  // its markbit set. If no such address exists, it returns the page area start.
+  // If the page is iterable, the returned address is guaranteed to be the start
+  // of a valid object in the page.
+  static inline Address FindPreviousValidObject(const PageMetadata* page,
+                                                Address maybe_inner_ptr);
 
  private:
   V8_INLINE static MarkingBitmap* FromAddress(Address address);
@@ -225,13 +234,13 @@ class LiveObjectRange final {
  public:
   class iterator final {
    public:
-    using value_type = std::pair<HeapObject, int /* size */>;
+    using value_type = std::pair<Tagged<HeapObject>, int /* size */>;
     using pointer = const value_type*;
     using reference = const value_type&;
     using iterator_category = std::forward_iterator_tag;
 
     inline iterator();
-    explicit inline iterator(const Page* page);
+    explicit inline iterator(const PageMetadata* page);
 
     inline iterator& operator++();
     inline iterator operator++(int);
@@ -249,23 +258,57 @@ class LiveObjectRange final {
     inline bool AdvanceToNextMarkedObject();
     inline void AdvanceToNextValidObject();
 
-    const Page* const page_ = nullptr;
+    const PageMetadata* const page_ = nullptr;
     const MarkBit::CellType* const cells_ = nullptr;
     const PtrComprCageBase cage_base_;
     MarkingBitmap::CellIndex current_cell_index_ = 0;
     MarkingBitmap::CellType current_cell_ = 0;
-    HeapObject current_object_;
-    Map current_map_;
+    Tagged<HeapObject> current_object_;
+    Tagged<Map> current_map_;
     int current_size_ = 0;
   };
 
-  explicit LiveObjectRange(const Page* page) : page_(page) {}
+  explicit LiveObjectRange(const PageMetadata* page) : page_(page) {}
 
   inline iterator begin();
   inline iterator end();
 
  private:
-  const Page* const page_;
+  const PageMetadata* const page_;
+};
+
+struct MarkingHelper final : public AllStatic {
+  // TODO(340989496): Add on hold as target in ShouldMarkObject() and
+  // TryMarkAndPush().
+  enum class WorklistTarget : uint8_t {
+    kRegular,
+  };
+
+  enum class LivenessMode : uint8_t {
+    kMarkbit,
+    kAlwaysLive,
+  };
+
+  // Returns whether an object should be marked and if so also returns the
+  // worklist that must be used to do so.
+  //
+  //  Can be used with full GC and young GC using sticky markbits.
+  static V8_INLINE std::optional<WorklistTarget> ShouldMarkObject(
+      Heap* heap, Tagged<HeapObject> object);
+
+  // Returns whether the markbit of an object should be considered or whether
+  // the object is always considered as live.
+  static V8_INLINE LivenessMode GetLivenessMode(Heap* heap,
+                                                Tagged<HeapObject> object);
+
+  // Convenience helper around marking and pushing an object.
+  //
+  //  Can be used with full GC and young GC using sticky markbits.
+  template <typename MarkingState>
+  static V8_INLINE bool TryMarkAndPush(
+      Heap* heap, MarkingWorklists::Local* marking_worklist,
+      MarkingState* marking_state, WorklistTarget target_worklis,
+      Tagged<HeapObject> object);
 };
 
 }  // namespace v8::internal

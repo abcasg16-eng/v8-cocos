@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/pch.gni")
 import("//build/config/rust.gni")
 import("clang.gni")
 
@@ -30,6 +31,29 @@ config("find_bad_constructs") {
       "-plugin-arg-find-bad-constructs",
       "-Xclang",
       "check-stack-allocated",
+
+      # TODO(danakj): Delete this after the next clang roll.
+      "-Xclang",
+      "-plugin-arg-find-bad-constructs",
+      "-Xclang",
+      "check-allow-auto-typedefs-better-nested",
+
+      "-Xclang",
+      "-plugin-arg-find-bad-constructs",
+      "-Xclang",
+      "check-raw-ptr-to-stack-allocated",
+
+      "-Xclang",
+      "-plugin-arg-find-bad-constructs",
+      "-Xclang",
+      "disable-check-raw-ptr-to-stack-allocated-error",
+
+      # TODO(crbug.com/40944547): Remove when raw_ptr check has been
+      # enabled for the dawn repo.
+      "-Xclang",
+      "-plugin-arg-find-bad-constructs",
+      "-Xclang",
+      "raw-ptr-exclude-path=/third_party/dawn/",
     ]
 
     if (is_linux || is_chromeos || is_android || is_fuchsia) {
@@ -47,50 +71,49 @@ config("find_bad_constructs") {
         "-plugin-arg-find-bad-constructs",
         "-Xclang",
         "check-raw-ptr-fields",
-
-        # TODO(mikt): Remove this once crrev.com/c/4565714 is rolled out.
-        "-Xclang",
-        "-plugin-arg-find-bad-constructs",
-        "-Xclang",
-        "raw-ptr-exclude-path=testing/platform_test.h",
-        "-Xclang",
-        "-plugin-arg-find-bad-constructs",
-        "-Xclang",
-        "raw-ptr-exclude-path=sandbox/mac/",
-
-        # TODO(mikt): Remove this once crrev.com/c/4575913 is rolled out.
-        "-Xclang",
-        "-plugin-arg-find-bad-constructs",
-        "-Xclang",
-        "raw-ptr-exclude-path=chrome/browser/ui/cocoa/touchbar/browser_window_default_touch_bar.mm",
-        "-Xclang",
-        "-plugin-arg-find-bad-constructs",
-        "-Xclang",
-        "raw-ptr-exclude-path=device/bluetooth/test/mock_bluetooth_central_manager_mac.mm",
-        "-Xclang",
-        "-plugin-arg-find-bad-constructs",
-        "-Xclang",
-        "raw-ptr-exclude-path=device/bluetooth/test/mock_bluetooth_cbperipheral_mac.mm",
-        "-Xclang",
-        "-plugin-arg-find-bad-constructs",
-        "-Xclang",
-        "raw-ptr-exclude-path=ui/views/controls/native/native_view_host_mac_unittest.mm",
-        "-Xclang",
-        "-plugin-arg-find-bad-constructs",
-        "-Xclang",
-        "raw-ptr-exclude-path=ui/views/widget/native_widget_mac_unittest.mm",
-        "-Xclang",
-        "-plugin-arg-find-bad-constructs",
-        "-Xclang",
-        "raw-ptr-exclude-path=ui/views/controls/native/native_view_host_mac_unittest.mm",
-
-        # TODO(mikt): Remove this once crbug.com/1449812 is resolved.
-        "-Xclang",
-        "-plugin-arg-find-bad-constructs",
-        "-Xclang",
-        "raw-ptr-exclude-path=um/winnt.h",
       ]
     }
+
+    if (enable_check_raw_ref_fields) {
+      cflags += [
+        "-Xclang",
+        "-plugin-arg-find-bad-constructs",
+        "-Xclang",
+        "check-raw-ref-fields",
+      ]
+    }
+  }
+}
+
+# A plugin for incrementally applying the -Wunsafe-buffer-usage warning.
+#
+# To use the plugin, the project must specify a path as
+# `clang_unsafe_buffers_paths` in the `//.gn` file. This path points to a text
+# file that controls where the warning is checked.
+#
+# See //build/config/unsafe_buffers_paths.txt for an example file, this it the
+# file used by Chromium.
+#
+# This build configuration is not supported when `enable_precompiled_headers`
+# is on because the pragmas that enable and disable unsafe-buffers warnings are
+# not serialized to precompiled header files, and thus we get warnings that we
+# should not.
+config("unsafe_buffers") {
+  if (clang_use_chrome_plugins && clang_unsafe_buffers_paths != "" &&
+      !enable_precompiled_headers) {
+    cflags = [
+      "-DUNSAFE_BUFFERS_BUILD",
+
+      "-Xclang",
+      "-add-plugin",
+      "-Xclang",
+      "unsafe-buffers",
+
+      "-Xclang",
+      "-plugin-arg-unsafe-buffers",
+      "-Xclang",
+      rebase_path(clang_unsafe_buffers_paths, root_build_dir),
+    ]
   }
 }
 
@@ -136,7 +159,7 @@ template("clang_lib") {
         } else if (current_cpu == "x86") {
           _suffix = "-i386"
         } else if (current_cpu == "arm64") {
-          _suffix = "-arm64"
+          _suffix = "-aarch64"
         } else {
           assert(false)  # Unhandled cpu type
         }
@@ -200,14 +223,11 @@ clang_lib("compiler_builtins") {
   } else if (is_ios) {
     if (target_environment == "simulator") {
       libname = "iossim"
+    } else if (target_environment == "catalyst") {
+      libname = "osx"
     } else {
       libname = "ios"
     }
-  } else if (is_win && current_cpu == "arm64") {
-    # TODO(https://crbug.com/1453618): The Clang toolchain package is missing
-    # the arm64 libraries. Don't define libname which makes this target do
-    # nothing. Things will build but C++ will end up using the Rust
-    # compiler-builtins intrinsics on Win ARM64 until this is fixed.
   } else {
     libname = "builtins"
   }
@@ -224,18 +244,17 @@ clang_lib("compiler_profile") {
   } else if (is_ios) {
     if (target_environment == "simulator") {
       libname = "profile_iossim"
+    } else if (target_environment == "catalyst") {
+      # We don't enable clang coverage on iOS device builds, and the library is
+      # not part of the Clang package tarball as a result.
+      #
+      # Don't define libname which makes this target do nothing.
     } else {
       # We don't enable clang coverage on iOS device builds, and the library is
       # not part of the Clang package tarball as a result.
       #
       # Don't define libname which makes this target do nothing.
     }
-  } else if (is_win && current_cpu == "arm64") {
-    # TODO(https://crbug.com/1453618): The Clang toolchain package is missing
-    # the arm64 libraries. Don't define libname which makes this target do
-    # nothing. This will cause Rust-only targets to fail to link if Rust and
-    # clang coverage are both enabled on Win ARM64 (as lld-link depends on a C++
-    # compiled object file being present to point it to the profile symbols).
   } else {
     libname = "profile"
   }

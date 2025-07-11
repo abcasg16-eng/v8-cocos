@@ -19,6 +19,7 @@
 #include "src/execution/frames.h"
 #include "src/execution/isolate.h"
 #include "src/execution/simulator.h"
+#include "src/flags/flags.h"
 #include "src/init/bootstrapper.h"
 #include "src/libsampler/sampler.h"
 #include "src/objects/elements.h"
@@ -26,6 +27,9 @@
 #include "src/profiler/heap-profiler.h"
 #include "src/sandbox/sandbox.h"
 #include "src/snapshot/snapshot.h"
+#if defined(V8_USE_PERFETTO)
+#include "src/tracing/code-data-source.h"
+#endif  // defined(V8_USE_PERFETTO)
 #include "src/tracing/tracing-category-observer.h"
 
 #if V8_ENABLE_WEBASSEMBLY
@@ -137,17 +141,21 @@ void V8::Initialize() {
   CHECK(platform_);
 
   // Update logging information before enforcing flag implications.
-  FlagValue<bool>* log_all_flags[] = {&v8_flags.log_all,
-                                      &v8_flags.log_code,
-                                      &v8_flags.log_code_disassemble,
-                                      &v8_flags.log_source_code,
-                                      &v8_flags.log_source_position,
-                                      &v8_flags.log_feedback_vector,
-                                      &v8_flags.log_function_events,
-                                      &v8_flags.log_internal_timer_events,
-                                      &v8_flags.log_deopt,
-                                      &v8_flags.log_ic,
-                                      &v8_flags.log_maps};
+  FlagValue<bool>* log_all_flags[] = {
+      &v8_flags.log_all,
+      &v8_flags.log_code,
+      &v8_flags.log_code_disassemble,
+      &v8_flags.log_deopt,
+      &v8_flags.log_feedback_vector,
+      &v8_flags.log_function_events,
+      &v8_flags.log_ic,
+      &v8_flags.log_maps,
+      &v8_flags.log_source_code,
+      &v8_flags.log_source_position,
+      &v8_flags.log_timer_events,
+      &v8_flags.prof,
+      &v8_flags.prof_cpp,
+  };
   if (v8_flags.log_all) {
     // Enable all logging flags
     for (auto* flag : log_all_flags) {
@@ -166,8 +174,6 @@ void V8::Initialize() {
                    v8_flags.perf_basic_prof || v8_flags.ll_prof ||
                    v8_flags.prof || v8_flags.prof_cpp || v8_flags.gdbjit;
   }
-
-  FlagList::EnforceFlagImplications();
 
   if (v8_flags.predictable && v8_flags.random_seed == 0) {
     // Avoid random seeds in predictable mode.
@@ -212,6 +218,9 @@ void V8::Initialize() {
     DISABLE_FLAG(trace_turbo_graph);
     DISABLE_FLAG(trace_turbo_scheduled);
     DISABLE_FLAG(trace_turbo_reduction);
+#ifdef V8_ENABLE_SLOW_TRACING
+    // If expensive tracing is disabled via a build flag, the following flags
+    // cannot be disabled (because they are already).
     DISABLE_FLAG(trace_turbo_trimming);
     DISABLE_FLAG(trace_turbo_jt);
     DISABLE_FLAG(trace_turbo_ceq);
@@ -219,6 +228,7 @@ void V8::Initialize() {
     DISABLE_FLAG(trace_turbo_alloc);
     DISABLE_FLAG(trace_all_uses);
     DISABLE_FLAG(trace_representation);
+#endif
     DISABLE_FLAG(trace_turbo_stack_accesses);
   }
 
@@ -227,12 +237,22 @@ void V8::Initialize() {
   // generation.
   CHECK(!v8_flags.interpreted_frames_native_stack || !v8_flags.jitless);
 
-  base::OS::Initialize(v8_flags.hard_abort, v8_flags.gc_fake_mmap);
+  base::AbortMode abort_mode = base::AbortMode::kDefault;
+
+  if (v8_flags.soft_abort) {
+    abort_mode = base::AbortMode::kSoft;
+  } else if (v8_flags.hard_abort) {
+    abort_mode = base::AbortMode::kHard;
+  }
+
+  base::OS::Initialize(abort_mode, v8_flags.gc_fake_mmap);
 
   if (v8_flags.random_seed) {
     GetPlatformPageAllocator()->SetRandomMmapSeed(v8_flags.random_seed);
     GetPlatformVirtualAddressSpace()->SetRandomSeed(v8_flags.random_seed);
   }
+
+  FlagList::EnforceFlagImplications();
 
   if (v8_flags.print_flag_values) FlagList::PrintValues();
 
@@ -249,15 +269,18 @@ void V8::Initialize() {
   GetProcessWideSandbox()->Initialize(GetPlatformVirtualAddressSpace());
   CHECK_EQ(kSandboxSize, GetProcessWideSandbox()->size());
 
-#if defined(V8_CODE_POINTER_SANDBOXING)
   GetProcessWideCodePointerTable()->Initialize();
-#endif
 #endif
 
 #if defined(V8_USE_PERFETTO)
-  if (perfetto::Tracing::IsInitialized()) TrackEvent::Register();
+  if (perfetto::Tracing::IsInitialized()) {
+    TrackEvent::Register();
+    if (v8_flags.perfetto_code_logger) {
+      v8::internal::CodeDataSource::Register();
+    }
+  }
 #endif
-  IsolateAllocator::InitializeOncePerProcess();
+  IsolateGroup::InitializeOncePerProcess();
   Isolate::InitializeOncePerProcess();
 
 #if defined(USE_SIMULATOR)
@@ -351,4 +374,12 @@ void V8::SetSnapshotBlob(StartupData* snapshot_blob) {
 double Platform::SystemClockTimeMillis() {
   return base::OS::TimeCurrentMillis();
 }
+
+// static
+void ThreadIsolatedAllocator::SetDefaultPermissionsForSignalHandler() {
+#if V8_HAS_PKU_JIT_WRITE_PROTECT
+  internal::RwxMemoryWriteScope::SetDefaultPermissionsForSignalHandler();
+#endif
+}
+
 }  // namespace v8

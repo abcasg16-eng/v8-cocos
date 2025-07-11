@@ -32,13 +32,11 @@ RUNTIME_FUNCTION(Runtime_AccessCheck) {
   DCHECK_EQ(1, args.length());
   Handle<JSObject> object = args.at<JSObject>(0);
   if (!isolate->MayAccess(isolate->native_context(), object)) {
-    isolate->ReportFailedAccessCheck(object);
-    RETURN_FAILURE_IF_SCHEDULED_EXCEPTION(isolate);
-    // TODO(ishell): Force throw an exception if the callback doesn't, so we
-    // can remove reliance on return values.
-    return ReadOnlyRoots(isolate).false_value();
+    RETURN_FAILURE_ON_EXCEPTION(isolate,
+                                isolate->ReportFailedAccessCheck(object));
+    UNREACHABLE();
   }
-  return ReadOnlyRoots(isolate).true_value();
+  return ReadOnlyRoots(isolate).undefined_value();
 }
 
 RUNTIME_FUNCTION(Runtime_FatalProcessOutOfMemoryInAllocateRaw) {
@@ -99,19 +97,36 @@ RUNTIME_FUNCTION(Runtime_TerminateExecution) {
   return isolate->TerminateExecution();
 }
 
-#define THROW_ERROR(isolate, args, call)                               \
-  HandleScope scope(isolate);                                          \
-  DCHECK_LE(1, args.length());                                         \
-  int message_id_smi = args.smi_value_at(0);                           \
-                                                                       \
-  Handle<Object> undefined = isolate->factory()->undefined_value();    \
-  Handle<Object> arg0 = (args.length() > 1) ? args.at(1) : undefined;  \
-  Handle<Object> arg1 = (args.length() > 2) ? args.at(2) : undefined;  \
-  Handle<Object> arg2 = (args.length() > 3) ? args.at(3) : undefined;  \
-                                                                       \
-  MessageTemplate message_id = MessageTemplateFromInt(message_id_smi); \
-                                                                       \
-  THROW_NEW_ERROR_RETURN_FAILURE(isolate, call(message_id, arg0, arg1, arg2));
+namespace {
+
+Tagged<Object> NewError(Isolate* isolate, RuntimeArguments args,
+                        Handle<JSFunction> (Isolate::*constructor_fn)()) {
+  HandleScope scope(isolate);
+  DCHECK_LE(1, args.length());
+  int message_id_smi = args.smi_value_at(0);
+
+  constexpr int kMaxMessageArgs = 3;
+  DirectHandle<Object> message_args[kMaxMessageArgs];
+  int num_message_args = 0;
+  while (num_message_args < kMaxMessageArgs &&
+         args.length() > num_message_args + 1) {
+    message_args[num_message_args] = args.at(num_message_args + 1);
+    ++num_message_args;
+  }
+
+  MessageTemplate message_id = MessageTemplateFromInt(message_id_smi);
+
+  return *isolate->factory()->NewError(
+      (isolate->*constructor_fn)(), message_id,
+      base::VectorOf(message_args, num_message_args));
+}
+
+Tagged<Object> ThrowError(Isolate* isolate, RuntimeArguments args,
+                          Handle<JSFunction> (Isolate::*constructor_fn)()) {
+  return isolate->Throw(NewError(isolate, args, constructor_fn));
+}
+
+}  // namespace
 
 RUNTIME_FUNCTION(Runtime_ThrowRangeError) {
   if (v8_flags.correctness_fuzzer_suppressions) {
@@ -130,21 +145,20 @@ RUNTIME_FUNCTION(Runtime_ThrowRangeError) {
     }
   }
 
-  THROW_ERROR(isolate, args, NewRangeError);
+  return ThrowError(isolate, args, &Isolate::range_error_function);
 }
 
 RUNTIME_FUNCTION(Runtime_ThrowTypeError) {
-  THROW_ERROR(isolate, args, NewTypeError);
+  return ThrowError(isolate, args, &Isolate::type_error_function);
 }
 
 RUNTIME_FUNCTION(Runtime_ThrowTypeErrorIfStrict) {
   if (GetShouldThrow(isolate, Nothing<ShouldThrow>()) ==
-      ShouldThrow::kDontThrow)
+      ShouldThrow::kDontThrow) {
     return ReadOnlyRoots(isolate).undefined_value();
-  THROW_ERROR(isolate, args, NewTypeError);
+  }
+  return ThrowError(isolate, args, &Isolate::type_error_function);
 }
-
-#undef THROW_ERROR
 
 namespace {
 
@@ -193,10 +207,11 @@ RUNTIME_FUNCTION(Runtime_UnwindAndFindExceptionHandler) {
   return isolate->UnwindAndFindHandler();
 }
 
-RUNTIME_FUNCTION(Runtime_PromoteScheduledException) {
+RUNTIME_FUNCTION(Runtime_PropagateException) {
   SealHandleScope shs(isolate);
   DCHECK_EQ(0, args.length());
-  return isolate->PromoteScheduledException();
+  DCHECK(isolate->has_exception());
+  return ReadOnlyRoots(isolate).exception();
 }
 
 RUNTIME_FUNCTION(Runtime_ThrowReferenceError) {
@@ -225,34 +240,8 @@ RUNTIME_FUNCTION(Runtime_NewError) {
   return *isolate->factory()->NewError(message_template, arg0);
 }
 
-RUNTIME_FUNCTION(Runtime_NewForeign) {
-  HandleScope scope(isolate);
-  DCHECK_EQ(0, args.length());
-  return *isolate->factory()->NewForeign(kNullAddress);
-}
-
 RUNTIME_FUNCTION(Runtime_NewTypeError) {
-  HandleScope scope(isolate);
-  DCHECK_LE(args.length(), 4);
-  DCHECK_GE(args.length(), 1);
-  int template_index = args.smi_value_at(0);
-  MessageTemplate message_template = MessageTemplateFromInt(template_index);
-
-  Handle<Object> arg0;
-  if (args.length() >= 2) {
-    arg0 = args.at<Object>(1);
-  }
-
-  Handle<Object> arg1;
-  if (args.length() >= 3) {
-    arg1 = args.at<Object>(2);
-  }
-  Handle<Object> arg2;
-  if (args.length() >= 4) {
-    arg2 = args.at<Object>(3);
-  }
-
-  return *isolate->factory()->NewTypeError(message_template, arg0, arg1, arg2);
+  return NewError(isolate, args, &Isolate::type_error_function);
 }
 
 RUNTIME_FUNCTION(Runtime_NewReferenceError) {
@@ -262,15 +251,6 @@ RUNTIME_FUNCTION(Runtime_NewReferenceError) {
   Handle<Object> arg0 = args.at(1);
   MessageTemplate message_template = MessageTemplateFromInt(template_index);
   return *isolate->factory()->NewReferenceError(message_template, arg0);
-}
-
-RUNTIME_FUNCTION(Runtime_NewSyntaxError) {
-  HandleScope scope(isolate);
-  DCHECK_EQ(2, args.length());
-  int template_index = args.smi_value_at(0);
-  Handle<Object> arg0 = args.at(1);
-  MessageTemplate message_template = MessageTemplateFromInt(template_index);
-  return *isolate->factory()->NewSyntaxError(message_template, arg0);
 }
 
 RUNTIME_FUNCTION(Runtime_ThrowInvalidStringLength) {
@@ -308,8 +288,8 @@ RUNTIME_FUNCTION(Runtime_ThrowNoAccess) {
   // TODO(verwaest): We would like to throw using the calling context instead
   // of the entered context but we don't currently have access to that.
   HandleScopeImplementer* impl = isolate->handle_scope_implementer();
-  SaveAndSwitchContext save(
-      isolate, impl->LastEnteredOrMicrotaskContext()->native_context());
+  SaveAndSwitchContext save(isolate,
+                            impl->LastEnteredContext()->native_context());
   THROW_NEW_ERROR_RETURN_FAILURE(isolate,
                                  NewTypeError(MessageTemplate::kNoAccess));
 }
@@ -328,7 +308,7 @@ RUNTIME_FUNCTION(Runtime_ThrowApplyNonFunction) {
   Handle<Object> object = args.at(0);
   Handle<String> type = Object::TypeOf(isolate, object);
   Handle<String> msg;
-  if (object->IsNull()) {
+  if (IsNull(*object)) {
     // "which is null"
     msg = isolate->factory()->NewStringFromAsciiChecked("null");
   } else if (isolate->factory()->object_string()->Equals(*type)) {
@@ -393,9 +373,9 @@ RUNTIME_FUNCTION(Runtime_StackGuardWithGap) {
 
 namespace {
 
-Object BytecodeBudgetInterruptWithStackCheck(Isolate* isolate,
-                                             RuntimeArguments& args,
-                                             CodeKind code_kind) {
+Tagged<Object> BytecodeBudgetInterruptWithStackCheck(Isolate* isolate,
+                                                     RuntimeArguments& args,
+                                                     CodeKind code_kind) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
   Handle<JSFunction> function = args.at<JSFunction>(0);
@@ -410,8 +390,8 @@ Object BytecodeBudgetInterruptWithStackCheck(Isolate* isolate,
     // the runtime function call being what overflows the stack.
     return isolate->StackOverflow();
   } else if (check.InterruptRequested()) {
-    Object return_value = isolate->stack_guard()->HandleInterrupts();
-    if (!return_value.IsUndefined(isolate)) {
+    Tagged<Object> return_value = isolate->stack_guard()->HandleInterrupts();
+    if (!IsUndefined(return_value, isolate)) {
       return return_value;
     }
   }
@@ -420,8 +400,8 @@ Object BytecodeBudgetInterruptWithStackCheck(Isolate* isolate,
   return ReadOnlyRoots(isolate).undefined_value();
 }
 
-Object BytecodeBudgetInterrupt(Isolate* isolate, RuntimeArguments& args,
-                               CodeKind code_kind) {
+Tagged<Object> BytecodeBudgetInterrupt(Isolate* isolate, RuntimeArguments& args,
+                                       CodeKind code_kind) {
   HandleScope scope(isolate);
   DCHECK_EQ(1, args.length());
   Handle<JSFunction> function = args.at<JSFunction>(0);
@@ -489,19 +469,15 @@ class SaveAndClearThreadInWasmFlag {};
 
 RUNTIME_FUNCTION(Runtime_AllocateInYoungGeneration) {
   HandleScope scope(isolate);
+  DCHECK(isolate->IsOnCentralStack());
   DCHECK_EQ(2, args.length());
   // TODO(v8:13070): Align allocations in the builtins that call this.
   int size = ALIGN_TO_ALLOCATION_ALIGNMENT(args.smi_value_at(0));
   int flags = args.smi_value_at(1);
   AllocationAlignment alignment =
       AllocateDoubleAlignFlag::decode(flags) ? kDoubleAligned : kTaggedAligned;
-  bool allow_large_object_allocation =
-      AllowLargeObjectAllocationFlag::decode(flags);
   CHECK(IsAligned(size, kTaggedSize));
   CHECK_GT(size, 0);
-  if (!allow_large_object_allocation) {
-    CHECK(size <= kMaxRegularHeapObjectSize);
-  }
 
 #if V8_ENABLE_WEBASSEMBLY
   // When this is called from WasmGC code, clear the "thread in wasm" flag,
@@ -528,13 +504,8 @@ RUNTIME_FUNCTION(Runtime_AllocateInOldGeneration) {
   int flags = args.smi_value_at(1);
   AllocationAlignment alignment =
       AllocateDoubleAlignFlag::decode(flags) ? kDoubleAligned : kTaggedAligned;
-  bool allow_large_object_allocation =
-      AllowLargeObjectAllocationFlag::decode(flags);
   CHECK(IsAligned(size, kTaggedSize));
   CHECK_GT(size, 0);
-  if (!allow_large_object_allocation) {
-    CHECK(size <= kMaxRegularHeapObjectSize);
-  }
   return *isolate->factory()->NewFillerObject(
       size, alignment, AllocationType::kOld, AllocationOrigin::kGeneratedCode);
 }
@@ -545,28 +516,6 @@ RUNTIME_FUNCTION(Runtime_AllocateByteArray) {
   int length = args.smi_value_at(0);
   DCHECK_LT(0, length);
   return *isolate->factory()->NewByteArray(length);
-}
-
-RUNTIME_FUNCTION(Runtime_AllocateSeqOneByteString) {
-  HandleScope scope(isolate);
-  DCHECK_EQ(1, args.length());
-  int length = args.smi_value_at(0);
-  if (length == 0) return ReadOnlyRoots(isolate).empty_string();
-  Handle<SeqOneByteString> result;
-  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
-      isolate, result, isolate->factory()->NewRawOneByteString(length));
-  return *result;
-}
-
-RUNTIME_FUNCTION(Runtime_AllocateSeqTwoByteString) {
-  HandleScope scope(isolate);
-  DCHECK_EQ(1, args.length());
-  int length = args.smi_value_at(0);
-  if (length == 0) return ReadOnlyRoots(isolate).empty_string();
-  Handle<SeqTwoByteString> result;
-  ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
-      isolate, result, isolate->factory()->NewRawTwoByteString(length));
-  return *result;
 }
 
 RUNTIME_FUNCTION(Runtime_ThrowIteratorError) {
@@ -684,7 +633,7 @@ RUNTIME_FUNCTION(Runtime_GetAndResetRuntimeCallStats) {
   }
 
   std::FILE* f;
-  if (args[0].IsString()) {
+  if (IsString(args[0])) {
     // With a string argument, the results are appended to that file.
     Handle<String> filename = args.at<String>(0);
     f = std::fopen(filename->ToCString().get(), "a");
@@ -705,7 +654,7 @@ RUNTIME_FUNCTION(Runtime_GetAndResetRuntimeCallStats) {
   OFStream stats_stream(f);
   isolate->counters()->runtime_call_stats()->Print(stats_stream);
   isolate->counters()->runtime_call_stats()->Reset();
-  if (args[0].IsString()) {
+  if (IsString(args[0])) {
     std::fclose(f);
   } else {
     std::fflush(f);
@@ -752,7 +701,7 @@ RUNTIME_FUNCTION(Runtime_CreateAsyncFromSyncIterator) {
 
   Handle<Object> sync_iterator = args.at(0);
 
-  if (!sync_iterator->IsJSReceiver()) {
+  if (!IsJSReceiver(*sync_iterator)) {
     THROW_NEW_ERROR_RETURN_FAILURE(
         isolate, NewTypeError(MessageTemplate::kSymbolIteratorInvalid));
   }
@@ -775,7 +724,7 @@ RUNTIME_FUNCTION(Runtime_GetTemplateObject) {
   Handle<SharedFunctionInfo> shared_info = args.at<SharedFunctionInfo>(1);
   int slot_id = args.smi_value_at(2);
 
-  Handle<NativeContext> native_context(isolate->context().native_context(),
+  Handle<NativeContext> native_context(isolate->context()->native_context(),
                                        isolate);
   return *TemplateObjectDescription::GetTemplateObject(
       isolate, native_context, description, shared_info, slot_id);
@@ -790,13 +739,13 @@ RUNTIME_FUNCTION(Runtime_ReportMessageFromMicrotask) {
 
   Handle<Object> exception = args.at(0);
 
-  DCHECK(!isolate->has_pending_exception());
-  isolate->set_pending_exception(*exception);
+  DCHECK(!isolate->has_exception());
+  isolate->set_exception(*exception);
   MessageLocation* no_location = nullptr;
   Handle<JSMessageObject> message =
       isolate->CreateMessageOrAbort(exception, no_location);
   MessageHandler::ReportMessage(isolate, no_location, message);
-  isolate->clear_pending_exception();
+  isolate->clear_exception();
   return ReadOnlyRoots(isolate).undefined_value();
 }
 
@@ -816,7 +765,7 @@ RUNTIME_FUNCTION(Runtime_DoubleToStringWithRadix) {
   DCHECK_EQ(2, args.length());
   double number = args.number_value_at(0);
   int32_t radix = 0;
-  CHECK(args[1].ToInt32(&radix));
+  CHECK(Object::ToInt32(args[1], &radix));
 
   char* const str = DoubleToRadixCString(number, radix);
   Handle<String> result = isolate->factory()->NewStringFromAsciiChecked(str);
@@ -832,6 +781,17 @@ RUNTIME_FUNCTION(Runtime_SharedValueBarrierSlow) {
   ASSIGN_RETURN_FAILURE_ON_EXCEPTION(
       isolate, shared_value, Object::ShareSlow(isolate, value, kThrowOnError));
   return *shared_value;
+}
+
+RUNTIME_FUNCTION(Runtime_InvalidateDependentCodeForConstTrackingLet) {
+  HandleScope scope(isolate);
+  DCHECK_EQ(1, args.length());
+  Handle<ConstTrackingLetCell> const_tracking_let_cell =
+      Handle<ConstTrackingLetCell>::cast(args.at<HeapObject>(0));
+  DependentCode::DeoptimizeDependencyGroups(
+      isolate, *const_tracking_let_cell,
+      DependentCode::kConstTrackingLetChangedGroup);
+  return ReadOnlyRoots(isolate).undefined_value();
 }
 
 }  // namespace internal

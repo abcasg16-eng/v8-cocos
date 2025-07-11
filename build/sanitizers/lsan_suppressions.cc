@@ -23,6 +23,7 @@ char kLSanDefaultSuppressions[] =
 
     // False positives in libfontconfig. http://crbug.com/39050
     "leak:libfontconfig\n"
+    "leak:libthird_party_fontconfig\n"
     // eglibc-2.19/string/strdup.c creates false positive leak errors because of
     // the same reason as crbug.com/39050. The leak error stack trace, when
     // unwind on malloc, includes a call to libfontconfig. But the default stack
@@ -107,7 +108,7 @@ char kLSanDefaultSuppressions[] =
 #if BUILDFLAG(IS_MAC)
     // These are caused by the system, but not yet clear if they are false
     // positives or bugs in the Mac LSAN runtime. Suppress while investigating.
-    // TODO(https://crbug.com/1320449): Remove these if/when fixed in macOS
+    // TODO(crbug.com/40223516): Remove these if/when fixed in macOS
     // or the runtime.
     "leak:_ensureAuxServiceAwareOfHostApp\n"
     "leak:cssmErrorString\n"

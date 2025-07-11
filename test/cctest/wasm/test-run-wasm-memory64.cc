@@ -16,8 +16,7 @@ class Memory64Runner : public WasmRunner<ReturnType, ParamTypes...> {
  public:
   explicit Memory64Runner(TestExecutionTier execution_tier)
       : WasmRunner<ReturnType, ParamTypes...>(execution_tier, kWasmOrigin,
-                                              nullptr, "main",
-                                              kNoRuntimeExceptionSupport) {
+                                              nullptr, "main") {
     this->builder().EnableFeature(kFeature_memory64);
   }
 
@@ -26,9 +25,9 @@ class Memory64Runner : public WasmRunner<ReturnType, ParamTypes...> {
     return this->builder().template AddMemoryElems<T>(count, kMemory64);
   }
 
-  uint8_t* AddMemory(uint32_t size,
+  uint8_t* AddMemory(uint32_t size, size_t max_size,
                      SharedFlag shared = SharedFlag::kNotShared) {
-    return this->builder().AddMemory(size, shared, kMemory64);
+    return this->builder().AddMemory(size, shared, kMemory64, max_size);
   }
 };
 
@@ -86,7 +85,7 @@ WASM_EXEC_TEST(InitExpression) {
   testing::CompileAndInstantiateForTesting(
       isolate, &thrower, ModuleWireBytes(data, data + arraysize(data)));
   if (thrower.error()) {
-    thrower.Reify()->Print();
+    Print(*thrower.Reify());
     FATAL("compile or instantiate error");
   }
 }
@@ -103,8 +102,7 @@ WASM_EXEC_TEST(MemorySize) {
 
 WASM_EXEC_TEST(MemoryGrow) {
   Memory64Runner<int64_t, int64_t> r(execution_tier);
-  r.AddMemory(kWasmPageSize);
-  r.builder().SetMaxMemPages(13);
+  r.AddMemory(kWasmPageSize, 13 * kWasmPageSize);
 
   r.Build({WASM_MEMORY_GROW(WASM_LOCAL_GET(0))});
   CHECK_EQ(1, r.Call(6));

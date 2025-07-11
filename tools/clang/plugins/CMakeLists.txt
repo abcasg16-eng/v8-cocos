@@ -6,9 +6,9 @@ set(plugin_sources
   FindBadRawPtrPatterns.cpp
   CheckIPCVisitor.cpp
   CheckLayoutObjectMethodsVisitor.cpp
-  RawPtrCastingUnsafeChecker.cpp
   RawPtrHelpers.cpp
   StackAllocatedChecker.cpp
+  UnsafeBuffersPlugin.cpp
   Util.cpp
 )
 

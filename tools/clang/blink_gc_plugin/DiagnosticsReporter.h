@@ -93,11 +93,32 @@ class DiagnosticsReporter {
   void OptionalNewExprUsedWithGC(const clang::Expr* expr,
                                  const clang::CXXRecordDecl* optional,
                                  const clang::CXXRecordDecl* gc_type);
+  void RawPtrOrRefFieldUsedWithGC(const clang::FieldDecl* decl,
+                                  const clang::CXXRecordDecl* optional,
+                                  const clang::CXXRecordDecl* gc_type);
+  void RawPtrOrRefNewExprUsedWithGC(const clang::Expr* expr,
+                                    const clang::CXXRecordDecl* optional,
+                                    const clang::CXXRecordDecl* gc_type);
   void VariantUsedWithGC(const clang::Expr* expr,
                          const clang::CXXRecordDecl* variant,
                          const clang::CXXRecordDecl* gc_type);
+  void CollectionOfGCed(const clang::Decl* decl,
+                        const clang::CXXRecordDecl* collection,
+                        const clang::CXXRecordDecl* gc_type);
+  void CollectionOfGCed(const clang::Expr* expr,
+                        const clang::CXXRecordDecl* collection,
+                        const clang::CXXRecordDecl* gc_type);
+  void CollectionOfMembers(const clang::Decl* decl,
+                           const clang::CXXRecordDecl* collection,
+                           const clang::CXXRecordDecl* gc_type);
+  void CollectionOfMembers(const clang::Expr* expr,
+                           const clang::CXXRecordDecl* collection,
+                           const clang::CXXRecordDecl* gc_type);
   void MemberOnStack(const clang::VarDecl* var);
   void AdditionalPadding(const clang::RecordDecl* var, size_t padding);
+  void WeakPtrToGCed(const clang::Decl* decl,
+                     const clang::CXXRecordDecl* weak_ptr,
+                     const clang::CXXRecordDecl* gc_type);
 
  private:
   clang::DiagnosticBuilder ReportDiagnostic(
@@ -132,19 +153,23 @@ class DiagnosticsReporter {
   unsigned diag_left_most_base_must_be_polymorphic_;
   unsigned diag_base_class_must_declare_virtual_trace_;
   unsigned diag_class_must_crtp_itself_;
+  unsigned diag_weak_ptr_to_gc_managed_class_;
 
   unsigned diag_base_requires_tracing_note_;
   unsigned diag_field_requires_tracing_note_;
   unsigned diag_field_should_not_be_traced_note_;
   unsigned diag_raw_ptr_to_gc_managed_class_note_;
   unsigned diag_ref_ptr_to_gc_managed_class_note_;
-  unsigned diag_weak_ptr_to_gc_managed_class_note_;
   unsigned diag_reference_ptr_to_gc_managed_class_note_;
-  unsigned diag_own_ptr_to_gc_managed_class_note_;
   unsigned diag_unique_ptr_to_gc_managed_class_note_;
+  unsigned diag_raw_ptr_to_traceable_class_note_;
+  unsigned diag_ref_ptr_to_traceable_class_note_;
+  unsigned diag_reference_ptr_to_traceable_class_note_;
+  unsigned diag_unique_ptr_to_traceable_class_note_;
   unsigned diag_member_to_gc_unmanaged_class_note_;
   unsigned diag_stack_allocated_field_note_;
   unsigned diag_member_in_unmanaged_class_note_;
+  unsigned diag_ptr_to_member_in_unmanaged_class_note_;
   unsigned diag_part_object_to_gc_derived_class_note_;
   unsigned diag_part_object_contains_gc_root_note_;
   unsigned diag_part_object_contains_gc_root_ref_note_;
@@ -158,6 +183,7 @@ class DiagnosticsReporter {
   unsigned diag_member_in_stack_allocated_class_;
   unsigned diag_member_on_stack_;
   unsigned diag_additional_padding_;
+  unsigned diag_part_object_in_unmanaged_;
   unsigned diag_task_runner_timer_in_gc_class_note;
   unsigned diag_forbidden_field_part_object_class_note;
   unsigned diag_mojo_remote_in_gc_class_note;
@@ -168,7 +194,11 @@ class DiagnosticsReporter {
   unsigned diag_unique_ptr_used_with_gc_;
   unsigned diag_optional_field_used_with_gc_;
   unsigned diag_optional_new_expr_used_with_gc_;
+  unsigned diag_raw_ptr_or_ref_field_used_with_gc_;
+  unsigned diag_raw_ptr_or_ref_new_expr_used_with_gc_;
   unsigned diag_variant_used_with_gc_;
+  unsigned diag_collection_of_gced_;
+  unsigned diag_collection_of_members_;
 };
 
 #endif // TOOLS_BLINK_GC_PLUGIN_DIAGNOSTICS_REPORTER_H_

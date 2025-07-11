@@ -24,6 +24,8 @@ XCODE_DEVELOPER_PATH=$(xcode-select -p)
 
 ARGS="target_cpu=\"${ARCH}\"
 v8_target_cpu=\"${ARCH}\"
+mac_deployment_target=\"12.0\"
+mac_min_system_version=\"10.13\"
 enable_dsyms=false
 use_thin_lto=false
 use_lld=false
@@ -41,6 +43,12 @@ treat_warnings_as_errors=false
 symbol_level=0
 v8_enable_webassembly=true
 use_cxx17=true
+clang_version = "17" 
+v8_enable_sandbox=false
+enable_rust_cxx=false
+enable_rust=false
+v8_enable_fuzztest=false
+v8_enable_temporal_support=false
 v8_enable_sandbox=false"
 
 gn gen out/mac --args="${ARGS}"

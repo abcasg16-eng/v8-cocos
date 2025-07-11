@@ -28,6 +28,8 @@
 #include <stdlib.h>
 
 #include <cstdint>
+#include <cstring>
+#include <limits>
 
 #include "src/codegen/macro-assembler.h"
 #include "src/codegen/x64/assembler-x64-inl.h"
@@ -42,6 +44,7 @@
 #include "test/common/assembler-tester.h"
 #include "test/common/value-helper.h"
 #include "test/unittests/test-utils.h"
+#include "third_party/fp16/src/include/fp16.h"
 
 namespace v8 {
 namespace internal {
@@ -59,7 +62,7 @@ void PrintCode(Isolate* isolate, CodeDesc desc) {
   Handle<Code> code =
       Factory::CodeBuilder(isolate, desc, CodeKind::FOR_TESTING).Build();
   StdoutStream os;
-  code->Print(os);
+  Print(*code, os);
 #endif  // OBJECT_PRINT
 }
 
@@ -89,7 +92,7 @@ TEST_F(MacroAssemblerX64Test, TestCheck) {
 
   // Fail if the first parameter is 17.
   __ movl(rax, Immediate(17));
-  __ cmpl(rax, arg_reg_1);
+  __ cmpl(rax, kCArgRegs[0]);
   __ Check(Condition::not_equal, AbortReason::kNoReason);
   __ ret(0);
 
@@ -129,6 +132,9 @@ using F9 = int(int16_t*, int32_t*);
 using F10 = int(int8_t*, int16_t*);
 using F11 = int(uint16_t*, uint32_t*);
 using F12 = int(uint8_t*, uint16_t*);
+using F13 = int(float*, int32_t*);
+using F14 = int(uint16_t*, int16_t*);
+using F15 = int(uint16_t*, uint16_t*);
 
 #define __ masm->
 
@@ -164,9 +170,9 @@ TEST_F(MacroAssemblerX64Test, Smi) {
     bool is_in_range = number >= Smi::kMinValue && number <= Smi::kMaxValue;
     CHECK_EQ(is_in_range, is_valid);
     if (is_valid) {
-      Smi smi_from_intptr = Smi::FromIntptr(number);
+      Tagged<Smi> smi_from_intptr = Smi::FromIntptr(number);
       if (static_cast<int>(number) == number) {  // Is a 32-bit int.
-        Smi smi_from_int = Smi::FromInt(static_cast<int32_t>(number));
+        Tagged<Smi> smi_from_int = Smi::FromInt(static_cast<int32_t>(number));
         CHECK_EQ(smi_from_int, smi_from_intptr);
       }
       int64_t smi_value = smi_from_intptr.value();
@@ -175,7 +181,8 @@ TEST_F(MacroAssemblerX64Test, Smi) {
   }
 }
 
-static void TestMoveSmi(MacroAssembler* masm, Label* exit, int id, Smi value) {
+static void TestMoveSmi(MacroAssembler* masm, Label* exit, int id,
+                        Tagged<Smi> value) {
   __ movl(rax, Immediate(id));
   __ Move(rcx, value);
   __ Move(rdx, static_cast<intptr_t>(value.ptr()));
@@ -245,12 +252,16 @@ void TestSmiCompare(MacroAssembler* masm, Label* exit, int id, int x, int y) {
     __ movl(rax, Immediate(id + 3));
     __ j(not_equal, exit);
   }
+  // In this build config we clobber SMIs to stress test consumers, thus
+  // SmiCompare can actually change unused bits.
+#ifndef ENABLE_SLOW_DCHECKS
   __ movl(rax, Immediate(id + 4));
   __ cmpq(rcx, r8);
   __ j(not_equal, exit);
   __ incq(rax);
   __ cmpq(rdx, r9);
   __ j(not_equal, exit);
+#endif
 
   if (x != y) {
     __ SmiCompare(rdx, rcx);
@@ -266,9 +277,11 @@ void TestSmiCompare(MacroAssembler* masm, Label* exit, int id, int x, int y) {
     __ cmpq(rcx, rcx);
     __ movl(rax, Immediate(id + 11));
     __ j(not_equal, exit);
+#ifndef ENABLE_SLOW_DCHECKS
     __ incq(rax);
     __ cmpq(rcx, r8);
     __ j(not_equal, exit);
+#endif
   }
 }
 
@@ -540,11 +553,11 @@ TEST_F(MacroAssemblerX64Test, EmbeddedObj) {
       Factory::CodeBuilder(isolate, desc, CodeKind::FOR_TESTING).Build();
 #ifdef OBJECT_PRINT
   StdoutStream os;
-  code->Print(os);
+  Print(*code, os);
 #endif
   using myF0 = Address();
   auto f = GeneratedCode<myF0>::FromAddress(isolate, code->instruction_start());
-  Object result = Object(f.Call());
+  Tagged<Object> result = Tagged<Object>(f.Call());
   CHECK_EQ(old_array->ptr(), result.ptr());
 
   // Collect garbage to ensure reloc info can be walked by the heap.
@@ -571,7 +584,7 @@ TEST_F(MacroAssemblerX64Test, EmbeddedObj) {
 TEST_F(MacroAssemblerX64Test, SmiIndex) {
   Isolate* isolate = i_isolate();
   HandleScope handles(isolate);
-  auto buffer = AllocateAssemblerBuffer();
+  auto buffer = AllocateAssemblerBuffer(2 * Assembler::kDefaultBufferSize);
   MacroAssembler assembler(isolate, v8::internal::CodeObjectRequired::kYes,
                            buffer->CreateView());
 
@@ -952,6 +965,77 @@ TEST_F(MacroAssemblerX64Test, OperandOffset) {
   CHECK_EQ(0, result);
 }
 
+#define STORE(val, offset)                                              \
+  __ movq(kScratchRegister, Immediate(fp16_ieee_from_fp32_value(val))); \
+  __ movw(Operand(rsp, offset * kFloat16Size), kScratchRegister);
+
+#define LOAD_AND_CHECK(val, offset, op)                                     \
+  __ incq(rax);                                                             \
+  __ movq(kScratchRegister, Immediate(fp16_ieee_from_fp32_value(op(val)))); \
+  __ cmpw(kScratchRegister, Operand(rsp, offset * kFloat16Size));           \
+  __ j(not_equal, exit);
+
+void TestFloat16x8Abs(MacroAssembler* masm, Label* exit, float x, float y,
+                      float z, float w, float a, float b, float c, float d) {
+  __ AllocateStackSpace(kSimd128Size);
+
+  STORE(x, 0)
+  STORE(y, 1)
+  STORE(z, 2)
+  STORE(w, 3)
+  STORE(a, 4)
+  STORE(b, 5)
+  STORE(c, 6)
+  STORE(d, 7)
+
+  __ Movups(xmm0, Operand(rsp, 0));
+  __ Absph(xmm0, xmm0, kScratchRegister);
+  __ Movups(Operand(rsp, 0), xmm0);
+
+  LOAD_AND_CHECK(x, 0, fabsf)
+  LOAD_AND_CHECK(y, 1, fabsf)
+  LOAD_AND_CHECK(z, 2, fabsf)
+  LOAD_AND_CHECK(w, 3, fabsf)
+  LOAD_AND_CHECK(a, 4, fabsf)
+  LOAD_AND_CHECK(b, 5, fabsf)
+  LOAD_AND_CHECK(c, 6, fabsf)
+  LOAD_AND_CHECK(d, 7, fabsf)
+
+  __ addq(rsp, Immediate(kSimd128Size));
+}
+
+void TestFloat16x8Neg(MacroAssembler* masm, Label* exit, float x, float y,
+                      float z, float w, float a, float b, float c, float d) {
+  __ AllocateStackSpace(kSimd128Size);
+
+  STORE(x, 0)
+  STORE(y, 1)
+  STORE(z, 2)
+  STORE(w, 3)
+  STORE(a, 4)
+  STORE(b, 5)
+  STORE(c, 6)
+  STORE(d, 7)
+
+  __ Movups(xmm0, Operand(rsp, 0));
+  __ Negph(xmm0, xmm0, kScratchRegister);
+  __ Movups(Operand(rsp, 0), xmm0);
+
+  LOAD_AND_CHECK(x, 0, -)
+  LOAD_AND_CHECK(y, 1, -)
+  LOAD_AND_CHECK(z, 2, -)
+  LOAD_AND_CHECK(w, 3, -)
+  LOAD_AND_CHECK(a, 4, -)
+  LOAD_AND_CHECK(b, 5, -)
+  LOAD_AND_CHECK(c, 6, -)
+  LOAD_AND_CHECK(d, 7, -)
+
+  __ addq(rsp, Immediate(kSimd128Size));
+}
+
+#undef STORE
+#undef LOAD_AND_CHECK
+
 void TestFloat32x4Abs(MacroAssembler* masm, Label* exit, float x, float y,
                       float z, float w) {
   __ AllocateStackSpace(kSimd128Size);
@@ -1085,7 +1169,11 @@ TEST_F(MacroAssemblerX64Test, SIMDMacros) {
   EntryCode(masm);
   Label exit;
 
+  float NaN = std::numeric_limits<float>::quiet_NaN();
+  float inf = std::numeric_limits<float>::infinity();
   __ xorq(rax, rax);
+  TestFloat16x8Abs(masm, &exit, 1.5, -1.5, 0.5, -0.5, NaN, -NaN, inf, -inf);
+  TestFloat16x8Neg(masm, &exit, 1.5, -1.5, 0.5, -0.5, NaN, -NaN, inf, -inf);
   TestFloat32x4Abs(masm, &exit, 1.5, -1.5, 0.5, -0.5);
   TestFloat32x4Neg(masm, &exit, 1.5, -1.5, 0.5, -0.5);
   TestFloat64x2Abs(masm, &exit, 1.75, -1.75);
@@ -1126,13 +1214,13 @@ TEST_F(MacroAssemblerX64Test, S256Select) {
   CpuFeatureScope avx2_scope(masm, AVX2);
 
   // Load src1, src2, mask
-  __ vmovdqu(src1, Operand(arg_reg_1, 0));
-  __ vmovdqu(src2, Operand(arg_reg_2, 0));
-  __ vmovdqu(mask, Operand(arg_reg_3, 0));
+  __ vmovdqu(src1, Operand(kCArgRegs[0], 0));
+  __ vmovdqu(src2, Operand(kCArgRegs[1], 0));
+  __ vmovdqu(mask, Operand(kCArgRegs[2], 0));
   // Bitselect
   __ S256Select(dst, mask, src1, src2, tmp);
   // Store result
-  __ vmovdqu(Operand(arg_reg_4, 0), dst);
+  __ vmovdqu(Operand(kCArgRegs[3], 0), dst);
   __ ret(0);
 
   CodeDesc desc;
@@ -1218,7 +1306,11 @@ TEST_F(MacroAssemblerX64Test, DeoptExitSizeIsFixed) {
   for (int i = 0; i < kDeoptimizeKindCount; i++) {
     DeoptimizeKind kind = static_cast<DeoptimizeKind>(i);
     Label before_exit;
+
     masm.bind(&before_exit);
+    if (kind == DeoptimizeKind::kLazy) {
+      masm.CodeEntry();
+    }
     Builtin target = Deoptimizer::GetDeoptimizationEntry(kind);
     masm.CallForDeoptimization(target, 42, &before_exit, kind, &before_exit,
                                nullptr);
@@ -1243,12 +1335,12 @@ TEST_F(MacroAssemblerX64Test, I64x2Mul) {
   const XMMRegister tmp2 = xmm4;
 
   // Load array
-  __ movdqu(lhs, Operand(arg_reg_1, 0));
-  __ movdqu(rhs, Operand(arg_reg_2, 0));
+  __ movdqu(lhs, Operand(kCArgRegs[0], 0));
+  __ movdqu(rhs, Operand(kCArgRegs[1], 0));
   // Calculation
   __ I64x2Mul(dst, lhs, rhs, tmp1, tmp2);
   // Store result array
-  __ movdqu(Operand(arg_reg_3, 0), dst);
+  __ movdqu(Operand(kCArgRegs[2], 0), dst);
   __ ret(0);
 
   CodeDesc desc;
@@ -1304,12 +1396,12 @@ TEST_F(MacroAssemblerX64Test, I64x4Mul) {
   CpuFeatureScope avx2_scope(masm, AVX2);
 
   // Load array
-  __ vmovdqu(lhs, Operand(arg_reg_1, 0));
-  __ vmovdqu(rhs, Operand(arg_reg_2, 0));
+  __ vmovdqu(lhs, Operand(kCArgRegs[0], 0));
+  __ vmovdqu(rhs, Operand(kCArgRegs[1], 0));
   // Calculation
   __ I64x4Mul(dst, lhs, rhs, tmp1, tmp2);
   // Store result array
-  __ vmovdqu(Operand(arg_reg_3, 0), dst);
+  __ vmovdqu(Operand(kCArgRegs[2], 0), dst);
   __ ret(0);
 
   CodeDesc desc;
@@ -1367,12 +1459,12 @@ TEST_F(MacroAssemblerX64Test, I64x4Mul) {
     CpuFeatureScope avx2_scope(masm, AVX2);                                   \
                                                                               \
     /* src is register */                                                     \
-    __ name(ymm0, arg_reg_1);                                                 \
-    __ vmovdqu(Operand(arg_reg_3, 0), ymm0);                                  \
+    __ name(ymm0, kCArgRegs[0]);                                              \
+    __ vmovdqu(Operand(kCArgRegs[2], 0), ymm0);                               \
                                                                               \
     /* src is address*/                                                       \
-    __ name(ymm0, Operand(arg_reg_2, 0));                                     \
-    __ vmovdqu(Operand(arg_reg_4, 0), ymm0);                                  \
+    __ name(ymm0, Operand(kCArgRegs[1], 0));                                  \
+    __ vmovdqu(Operand(kCArgRegs[3], 0), ymm0);                               \
     __ ret(0);                                                                \
                                                                               \
     CodeDesc desc;                                                            \
@@ -1382,16 +1474,18 @@ TEST_F(MacroAssemblerX64Test, I64x4Mul) {
     buffer->MakeExecutable();                                                 \
     /* Call the function from C++. */                                         \
     auto f = GeneratedCode<Fn>::FromBuffer(i_isolate(), buffer->start());     \
-    int##lane_size##_t input = 123;                                           \
-    int##lane_size##_t* input_addr = &input;                                  \
-    int##lane_size##_t output1[lane_num];                                     \
-    int##lane_size##_t output2[lane_num];                                     \
                                                                               \
-    f.Call(input, input_addr, output1, output2);                              \
+    FOR_INT##lane_size##_INPUTS(input) {                                      \
+      int##lane_size##_t* input_addr = &input;                                \
+      int##lane_size##_t output1[lane_num];                                   \
+      int##lane_size##_t output2[lane_num];                                   \
                                                                               \
-    for (int i = 0; i < lane_num; ++i) {                                      \
-      CHECK_EQ(input, output1[i]);                                            \
-      CHECK_EQ(input, output2[i]);                                            \
+      f.Call(input, input_addr, output1, output2);                            \
+                                                                              \
+      for (int i = 0; i < lane_num; ++i) {                                    \
+        CHECK_EQ(input, output1[i]);                                          \
+        CHECK_EQ(input, output2[i]);                                          \
+      }                                                                       \
     }                                                                         \
   }
 
@@ -1420,12 +1514,12 @@ TEST_F(MacroAssemblerX64Test, F64x4Min) {
   CpuFeatureScope avx2_scope(masm, AVX2);
 
   // Load array
-  __ vmovdqu(lhs, Operand(arg_reg_1, 0));
-  __ vmovdqu(rhs, Operand(arg_reg_2, 0));
+  __ vmovdqu(lhs, Operand(kCArgRegs[0], 0));
+  __ vmovdqu(rhs, Operand(kCArgRegs[1], 0));
   // Calculation
   __ F64x4Min(dst, lhs, rhs, tmp);
   // Store result array
-  __ vmovdqu(Operand(arg_reg_3, 0), dst);
+  __ vmovdqu(Operand(kCArgRegs[2], 0), dst);
   __ ret(0);
 
   CodeDesc desc;
@@ -1435,7 +1529,7 @@ TEST_F(MacroAssemblerX64Test, F64x4Min) {
   Handle<Code> code =
       Factory::CodeBuilder(i_isolate(), desc, CodeKind::FOR_TESTING).Build();
   StdoutStream os;
-  code->Print(os);
+  Print(*code, os);
 #endif
   buffer->MakeExecutable();
   // Call the function from C++.
@@ -1487,12 +1581,12 @@ TEST_F(MacroAssemblerX64Test, F64x4Max) {
   CpuFeatureScope avx2_scope(masm, AVX2);
 
   // Load array
-  __ vmovdqu(lhs, Operand(arg_reg_1, 0));
-  __ vmovdqu(rhs, Operand(arg_reg_2, 0));
+  __ vmovdqu(lhs, Operand(kCArgRegs[0], 0));
+  __ vmovdqu(rhs, Operand(kCArgRegs[1], 0));
   // Calculation
   __ F64x4Max(dst, lhs, rhs, tmp);
   // Store result array
-  __ vmovdqu(Operand(arg_reg_3, 0), dst);
+  __ vmovdqu(Operand(kCArgRegs[2], 0), dst);
   __ ret(0);
 
   CodeDesc desc;
@@ -1502,7 +1596,7 @@ TEST_F(MacroAssemblerX64Test, F64x4Max) {
   Handle<Code> code =
       Factory::CodeBuilder(i_isolate(), desc, CodeKind::FOR_TESTING).Build();
   StdoutStream os;
-  code->Print(os);
+  Print(*code, os);
 #endif
   buffer->MakeExecutable();
   // Call the function from C++.
@@ -1554,12 +1648,12 @@ TEST_F(MacroAssemblerX64Test, F32x8Min) {
   CpuFeatureScope avx2_scope(masm, AVX2);
 
   // Load array
-  __ vmovdqu(lhs, Operand(arg_reg_1, 0));
-  __ vmovdqu(rhs, Operand(arg_reg_2, 0));
+  __ vmovdqu(lhs, Operand(kCArgRegs[0], 0));
+  __ vmovdqu(rhs, Operand(kCArgRegs[1], 0));
   // Calculation
   __ F32x8Min(dst, lhs, rhs, tmp);
   // Store result array
-  __ vmovdqu(Operand(arg_reg_3, 0), dst);
+  __ vmovdqu(Operand(kCArgRegs[2], 0), dst);
   __ ret(0);
 
   CodeDesc desc;
@@ -1569,7 +1663,7 @@ TEST_F(MacroAssemblerX64Test, F32x8Min) {
   Handle<Code> code =
       Factory::CodeBuilder(i_isolate(), desc, CodeKind::FOR_TESTING).Build();
   StdoutStream os;
-  code->Print(os);
+  Print(*code, os);
 #endif
   buffer->MakeExecutable();
   // Call the function from C++.
@@ -1624,12 +1718,12 @@ TEST_F(MacroAssemblerX64Test, F32x8Max) {
   CpuFeatureScope avx2_scope(masm, AVX2);
 
   // Load array
-  __ vmovdqu(lhs, Operand(arg_reg_1, 0));
-  __ vmovdqu(rhs, Operand(arg_reg_2, 0));
+  __ vmovdqu(lhs, Operand(kCArgRegs[0], 0));
+  __ vmovdqu(rhs, Operand(kCArgRegs[1], 0));
   // Calculation
   __ F32x8Max(dst, lhs, rhs, tmp);
   // Store result array
-  __ vmovdqu(Operand(arg_reg_3, 0), dst);
+  __ vmovdqu(Operand(kCArgRegs[2], 0), dst);
   __ ret(0);
 
   CodeDesc desc;
@@ -1639,7 +1733,7 @@ TEST_F(MacroAssemblerX64Test, F32x8Max) {
   Handle<Code> code =
       Factory::CodeBuilder(i_isolate(), desc, CodeKind::FOR_TESTING).Build();
   StdoutStream os;
-  code->Print(os);
+  Print(*code, os);
 #endif
   buffer->MakeExecutable();
   // Call the function from C++.
@@ -1697,8 +1791,8 @@ void RunExtMulTest(Isolate* isolate, OpType expected_op) {
   CpuFeatureScope avx2_scope(masm, AVX2);
 
   // Load array
-  __ vmovdqu(lhs, Operand(arg_reg_1, 0));
-  __ vmovdqu(rhs, Operand(arg_reg_2, 0));
+  __ vmovdqu(lhs, Operand(kCArgRegs[0], 0));
+  __ vmovdqu(rhs, Operand(kCArgRegs[1], 0));
 
   bool is_signed = std::is_signed_v<T>;
   // Calculation
@@ -1717,7 +1811,7 @@ void RunExtMulTest(Isolate* isolate, OpType expected_op) {
   }
 
   // Store result array
-  __ vmovdqu(Operand(arg_reg_3, 0), dst);
+  __ vmovdqu(Operand(kCArgRegs[2], 0), dst);
   __ ret(0);
 
   CodeDesc desc;
@@ -1807,11 +1901,11 @@ TEST_F(MacroAssemblerX64Test, I32x8ExtAddPairwiseI16x16S) {
   CpuFeatureScope avx2_scope(masm, AVX2);
 
   // Load array
-  __ vmovdqu(src, Operand(arg_reg_1, 0));
+  __ vmovdqu(src, Operand(kCArgRegs[0], 0));
   // Calculation
   __ I32x8ExtAddPairwiseI16x16S(dst, src, tmp);
   // Store result array
-  __ vmovdqu(Operand(arg_reg_2, 0), dst);
+  __ vmovdqu(Operand(kCArgRegs[1], 0), dst);
   __ ret(0);
 
   CodeDesc desc;
@@ -1865,11 +1959,11 @@ TEST_F(MacroAssemblerX64Test, I16x16ExtAddPairwiseI8x32S) {
   CpuFeatureScope avx2_scope(masm, AVX2);
 
   // Load array
-  __ vmovdqu(src, Operand(arg_reg_1, 0));
+  __ vmovdqu(src, Operand(kCArgRegs[0], 0));
   // Calculation
   __ I16x16ExtAddPairwiseI8x32S(dst, src, tmp);
   // Store result array
-  __ vmovdqu(Operand(arg_reg_2, 0), dst);
+  __ vmovdqu(Operand(kCArgRegs[1], 0), dst);
   __ ret(0);
 
   CodeDesc desc;
@@ -1927,11 +2021,11 @@ TEST_F(MacroAssemblerX64Test, I32x8ExtAddPairwiseI16x16U) {
   CpuFeatureScope avx2_scope(masm, AVX2);
 
   // Load array
-  __ vmovdqu(src, Operand(arg_reg_1, 0));
+  __ vmovdqu(src, Operand(kCArgRegs[0], 0));
   // Calculation
   __ I32x8ExtAddPairwiseI16x16U(dst, src, tmp);
   // Store result array
-  __ vmovdqu(Operand(arg_reg_2, 0), dst);
+  __ vmovdqu(Operand(kCArgRegs[1], 0), dst);
   __ ret(0);
 
   CodeDesc desc;
@@ -1984,11 +2078,11 @@ TEST_F(MacroAssemblerX64Test, I16x16ExtAddPairwiseI8x32U) {
   CpuFeatureScope avx2_scope(masm, AVX2);
 
   // Load array
-  __ vmovdqu(src, Operand(arg_reg_1, 0));
+  __ vmovdqu(src, Operand(kCArgRegs[0], 0));
   // Calculation
   __ I16x16ExtAddPairwiseI8x32U(dst, src, tmp);
   // Store result array
-  __ vmovdqu(Operand(arg_reg_2, 0), dst);
+  __ vmovdqu(Operand(kCArgRegs[1], 0), dst);
   __ ret(0);
 
   CodeDesc desc;
@@ -2024,6 +2118,281 @@ TEST_F(MacroAssemblerX64Test, I16x16ExtAddPairwiseI8x32U) {
     f.Call(input, output);
     for (int i = 0; i < 16; i++) {
       CHECK_EQ(output[i], (uint16_t)(input[2 * i] + input[2 * i + 1]));
+    }
+  }
+}
+
+TEST_F(MacroAssemblerX64Test, F64x4Splat) {
+  if (!CpuFeatures::IsSupported(AVX) || !CpuFeatures::IsSupported(AVX2)) return;
+  Isolate* isolate = i_isolate();
+  HandleScope handles(isolate);
+  auto buffer = AllocateAssemblerBuffer();
+  MacroAssembler assembler(isolate, v8::internal::CodeObjectRequired::kYes,
+                           buffer->CreateView());
+  MacroAssembler* masm = &assembler;
+  CpuFeatureScope avx_scope(masm, AVX);
+  CpuFeatureScope avx2_scope(masm, AVX2);
+
+  __ vmovsd(xmm1, Operand(kCArgRegs[0], 0));
+  __ F64x4Splat(ymm2, xmm1);
+  __ vmovdqu(Operand(kCArgRegs[1], 0), ymm2);
+  __ ret(0);
+
+  CodeDesc desc;
+  __ GetCode(i_isolate(), &desc);
+
+  PrintCode(isolate, desc);
+  buffer->MakeExecutable();
+  /* Call the function from C++. */
+  using F = int(double*, double*);
+  auto f = GeneratedCode<F>::FromBuffer(i_isolate(), buffer->start());
+  constexpr int kLaneNum = 4;
+  double output[kLaneNum];
+  FOR_FLOAT64_INPUTS(input) {
+    f.Call(&input, output);
+    for (int i = 0; i < kLaneNum; ++i) {
+      CHECK_EQ(0, std::memcmp(&input, &output[i], sizeof(double)));
+    }
+  }
+}
+
+TEST_F(MacroAssemblerX64Test, F32x8Splat) {
+  if (!CpuFeatures::IsSupported(AVX) || !CpuFeatures::IsSupported(AVX2)) return;
+  Isolate* isolate = i_isolate();
+  HandleScope handles(isolate);
+  auto buffer = AllocateAssemblerBuffer();
+  MacroAssembler assembler(isolate, v8::internal::CodeObjectRequired::kYes,
+                           buffer->CreateView());
+  MacroAssembler* masm = &assembler;
+  CpuFeatureScope avx_scope(masm, AVX);
+  CpuFeatureScope avx2_scope(masm, AVX2);
+
+  __ vmovss(xmm1, Operand(kCArgRegs[0], 0));
+  __ F32x8Splat(ymm2, xmm1);
+  __ vmovdqu(Operand(kCArgRegs[1], 0), ymm2);
+  __ ret(0);
+
+  CodeDesc desc;
+  __ GetCode(i_isolate(), &desc);
+
+  PrintCode(isolate, desc);
+  buffer->MakeExecutable();
+  /* Call the function from C++. */
+  using F = int(float*, float*);
+  auto f = GeneratedCode<F>::FromBuffer(i_isolate(), buffer->start());
+  constexpr int kLaneNum = 8;
+  float output[kLaneNum];
+  FOR_FLOAT32_INPUTS(input) {
+    f.Call(&input, output);
+    for (int i = 0; i < kLaneNum; ++i) {
+      CHECK_EQ(0, std::memcmp(&input, &output[i], sizeof(float)));
+    }
+  }
+}
+
+TEST_F(MacroAssemblerX64Test, I32x8SConvertF32x8) {
+  if (!CpuFeatures::IsSupported(AVX) || !CpuFeatures::IsSupported(AVX2)) return;
+  Isolate* isolate = i_isolate();
+  HandleScope handles(isolate);
+  auto buffer = AllocateAssemblerBuffer();
+  MacroAssembler assembler(isolate, v8::internal::CodeObjectRequired::kYes,
+                           buffer->CreateView());
+
+  MacroAssembler* masm = &assembler;
+
+  __ set_root_array_available(false);
+
+  const YMMRegister dst = ymm0;
+  const YMMRegister src = ymm1;
+  const YMMRegister tmp = ymm2;
+  const Register scratch = r10;
+
+  CpuFeatureScope avx_scope(masm, AVX);
+  CpuFeatureScope avx2_scope(masm, AVX2);
+
+  // Load array
+  __ vmovdqu(src, Operand(kCArgRegs[0], 0));
+  // Calculation
+  __ I32x8SConvertF32x8(dst, src, tmp, scratch);
+  // Store result array
+  __ vmovdqu(Operand(kCArgRegs[1], 0), dst);
+  __ ret(0);
+
+  CodeDesc desc;
+  __ GetCode(i_isolate(), &desc);
+
+  PrintCode(isolate, desc);
+
+  buffer->MakeExecutable();
+  // Call the function from C++.
+  auto f = GeneratedCode<F13>::FromBuffer(i_isolate(), buffer->start());
+
+  auto convert_to_int = [=](double val) -> int32_t {
+    if (std::isnan(val)) return 0;
+    if (val < kMinInt) return kMinInt;
+    if (val > kMaxInt) return kMaxInt;
+    return static_cast<int>(val);
+  };
+
+  constexpr float float_max = std::numeric_limits<float>::max();
+  constexpr float float_min = std::numeric_limits<float>::min();
+  constexpr float NaN = std::numeric_limits<float>::quiet_NaN();
+
+  std::vector<std::array<float, 8>> test_cases = {
+      {32.4, 2.5, 12.4, 62.346, 235.6, 2.36, 1253.4, 63.46},
+      {34.5, 2.63, 234.6, 34.68, -234.6, -1.264, -23.6, -2.36},
+      {NaN, 0, 0, -0, NaN, -NaN, -0, -0},
+      {float_max, float_max, float_min, float_min, float_max + 1, float_max + 1,
+       float_min - 1, float_min - 1}};
+  float input[8];
+  int32_t output[8];
+
+  for (const auto& arr : test_cases) {
+    for (int i = 0; i < 8; i++) {
+      input[i] = arr[i];
+    }
+    f.Call(input, output);
+    for (int i = 0; i < 8; i++) {
+      CHECK_EQ(output[i], convert_to_int(input[i]));
+    }
+  }
+}
+
+TEST_F(MacroAssemblerX64Test, I16x8SConvertF16x8) {
+  if (!CpuFeatures::IsSupported(F16C) || !CpuFeatures::IsSupported(AVX) ||
+      !CpuFeatures::IsSupported(AVX2)) {
+    return;
+  }
+
+  Isolate* isolate = i_isolate();
+  HandleScope handles(isolate);
+  auto buffer = AllocateAssemblerBuffer();
+  MacroAssembler assembler(isolate, v8::internal::CodeObjectRequired::kYes,
+                           buffer->CreateView());
+
+  MacroAssembler* masm = &assembler;
+
+  __ set_root_array_available(false);
+
+  const YMMRegister dst = ymm0;
+  const YMMRegister src = ymm1;
+  const YMMRegister tmp = ymm2;
+  const Register scratch = r10;
+
+  CpuFeatureScope f16c_scope(masm, F16C);
+  CpuFeatureScope avx_scope(masm, AVX);
+  CpuFeatureScope avx2_scope(masm, AVX2);
+
+  __ vmovdqu(src, Operand(kCArgRegs[0], 0));
+  __ I16x8SConvertF16x8(dst, src, tmp, scratch);
+  __ vmovdqu(Operand(kCArgRegs[1], 0), dst);
+  __ ret(0);
+
+  CodeDesc desc;
+  __ GetCode(i_isolate(), &desc);
+
+  PrintCode(isolate, desc);
+
+  buffer->MakeExecutable();
+  auto f = GeneratedCode<F14>::FromBuffer(i_isolate(), buffer->start());
+
+  auto convert_to_int = [=](float val) -> int16_t {
+    if (std::isnan(val)) return 0;
+    if (val < kMinInt16) return kMinInt16;
+    if (val > kMaxInt16) return kMaxInt16;
+    return static_cast<int16_t>(val);
+  };
+
+  float fp16_max = 65504;
+  float fp16_min = -fp16_max;
+  float NaN = std::numeric_limits<float>::quiet_NaN();
+  float neg_zero = base::bit_cast<float>(0x80000000);
+
+  std::vector<std::array<float, 8>> test_cases = {
+      {32.4, 2.5, 12.4, 62.346, 235.6, 2.36, 1253.4, 63.46},
+      {34.5, 2.63, 234.6, 34.68, -234.6, -1.264, -23.6, -2.36},
+      {NaN, 0, 0, neg_zero, NaN, -NaN, neg_zero, neg_zero},
+      {fp16_max, fp16_max, fp16_min, fp16_min, fp16_max + 1, fp16_max + 1,
+       fp16_min - 1, fp16_min - 1}};
+  uint16_t input[16];
+  int16_t output[16];
+
+  for (const auto& arr : test_cases) {
+    for (int i = 0; i < 8; i++) {
+      input[i] = fp16_ieee_from_fp32_value(arr[i]);
+    }
+    f.Call(input, output);
+    for (int i = 0; i < 8; i++) {
+      CHECK_EQ(output[i], convert_to_int(arr[i]));
+    }
+  }
+}
+
+TEST_F(MacroAssemblerX64Test, I16x8TruncF16x8U) {
+  if (!CpuFeatures::IsSupported(F16C) || !CpuFeatures::IsSupported(AVX) ||
+      !CpuFeatures::IsSupported(AVX2)) {
+    return;
+  }
+
+  Isolate* isolate = i_isolate();
+  HandleScope handles(isolate);
+  auto buffer = AllocateAssemblerBuffer();
+  MacroAssembler assembler(isolate, v8::internal::CodeObjectRequired::kYes,
+                           buffer->CreateView());
+
+  MacroAssembler* masm = &assembler;
+
+  __ set_root_array_available(false);
+
+  const YMMRegister dst = ymm0;
+  const YMMRegister src = ymm1;
+  const YMMRegister tmp = ymm2;
+
+  CpuFeatureScope f16c_scope(masm, F16C);
+  CpuFeatureScope avx_scope(masm, AVX);
+  CpuFeatureScope avx2_scope(masm, AVX2);
+
+  __ vmovdqu(src, Operand(kCArgRegs[0], 0));
+  __ I16x8TruncF16x8U(dst, src, tmp);
+  __ vmovdqu(Operand(kCArgRegs[1], 0), dst);
+  __ ret(0);
+
+  CodeDesc desc;
+  __ GetCode(i_isolate(), &desc);
+
+  PrintCode(isolate, desc);
+
+  buffer->MakeExecutable();
+  auto f = GeneratedCode<F15>::FromBuffer(i_isolate(), buffer->start());
+
+  auto convert_to_uint = [=](float val) -> uint16_t {
+    if (std::isnan(val)) return 0;
+    if (val < 0) return 0;
+    if (val > kMaxUInt16) return kMaxUInt16;
+    return static_cast<uint16_t>(val);
+  };
+
+  float fp16_max = 65504;
+  float fp16_min = -fp16_max;
+  float NaN = std::numeric_limits<float>::quiet_NaN();
+  float neg_zero = base::bit_cast<float>(0x80000000);
+
+  std::vector<std::array<float, 8>> test_cases = {
+      {32.4, 2.5, 12.4, 62.346, 235.6, 2.36, 1253.4, 63.46},
+      {34.5, 2.63, 234.6, 34.68, -234.6, -1.264, -23.6, -2.36},
+      {NaN, 0, 0, neg_zero, NaN, -NaN, neg_zero, neg_zero},
+      {fp16_max, fp16_max, fp16_min, fp16_min, fp16_max + 1, fp16_max + 1,
+       fp16_min - 1, fp16_min - 1}};
+  uint16_t input[16];
+  uint16_t output[16];
+
+  for (const auto& arr : test_cases) {
+    for (int i = 0; i < 8; i++) {
+      input[i] = fp16_ieee_from_fp32_value(arr[i]);
+    }
+    f.Call(input, output);
+    for (int i = 0; i < 8; i++) {
+      CHECK_EQ(output[i], convert_to_uint(fp16_ieee_to_fp32_value(input[i])));
     }
   }
 }

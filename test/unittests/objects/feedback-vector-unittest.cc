@@ -85,8 +85,8 @@ TEST_F(FeedbackVectorTest, VectorStructure) {
     spec.AddForInSlot();
     vector = NewFeedbackVector(isolate, &spec);
     FeedbackVectorHelper helper(vector);
-    FeedbackCell cell = *vector->GetClosureFeedbackCell(0);
-    CHECK_EQ(cell.value(), *factory->undefined_value());
+    Tagged<FeedbackCell> cell = vector->closure_feedback_cell(0);
+    CHECK_EQ(cell->value(), *factory->undefined_value());
   }
 }
 
@@ -121,7 +121,7 @@ TEST_F(FeedbackVectorTest, VectorICMetadata) {
 
   // Meanwhile set some feedback values and type feedback values to
   // verify the data structure remains intact.
-  vector->SynchronizedSet(FeedbackSlot(0), MaybeObject::FromObject(*vector));
+  vector->SynchronizedSet(FeedbackSlot(0), *vector);
 
   // Verify the metadata is correctly set up from the spec.
   for (int i = 0; i < 40; i++) {
@@ -194,8 +194,8 @@ TEST_F(FeedbackVectorTest, VectorCallICStateApply) {
   FeedbackNexus nexus(feedback_vector, slot);
   CHECK_EQ(InlineCacheState::MONOMORPHIC, nexus.ic_state());
   CHECK_EQ(CallFeedbackContent::kReceiver, nexus.GetCallFeedbackContent());
-  HeapObject heap_object;
-  CHECK(nexus.GetFeedback()->GetHeapObjectIfWeak(&heap_object));
+  Tagged<HeapObject> heap_object;
+  CHECK(nexus.GetFeedback().GetHeapObjectIfWeak(&heap_object));
   CHECK_EQ(*F, heap_object);
 
   TryRunJS(
@@ -203,7 +203,7 @@ TEST_F(FeedbackVectorTest, VectorCallICStateApply) {
       "foo();");
   CHECK_EQ(InlineCacheState::MONOMORPHIC, nexus.ic_state());
   CHECK_EQ(CallFeedbackContent::kTarget, nexus.GetCallFeedbackContent());
-  CHECK(nexus.GetFeedback()->GetHeapObjectIfWeak(&heap_object));
+  CHECK(nexus.GetFeedback().GetHeapObjectIfWeak(&heap_object));
   CHECK_EQ(*isolate->function_prototype_apply(), heap_object);
 
   TryRunJS(
@@ -233,8 +233,8 @@ TEST_F(FeedbackVectorTest, VectorCallFeedback) {
   FeedbackNexus nexus(feedback_vector, slot);
 
   CHECK_EQ(InlineCacheState::MONOMORPHIC, nexus.ic_state());
-  HeapObject heap_object;
-  CHECK(nexus.GetFeedback()->GetHeapObjectIfWeak(&heap_object));
+  Tagged<HeapObject> heap_object;
+  CHECK(nexus.GetFeedback().GetHeapObjectIfWeak(&heap_object));
   CHECK_EQ(*foo, heap_object);
 
   InvokeMajorGC();
@@ -265,9 +265,9 @@ TEST_F(FeedbackVectorTest, VectorPolymorphicCallFeedback) {
   FeedbackNexus nexus(feedback_vector, slot);
 
   CHECK_EQ(InlineCacheState::POLYMORPHIC, nexus.ic_state());
-  HeapObject heap_object;
-  CHECK(nexus.GetFeedback()->GetHeapObjectIfWeak(&heap_object));
-  CHECK(heap_object.IsFeedbackCell(isolate));
+  Tagged<HeapObject> heap_object;
+  CHECK(nexus.GetFeedback().GetHeapObjectIfWeak(&heap_object));
+  CHECK(IsFeedbackCell(heap_object, isolate));
   // Ensure this is the feedback cell for the closure returned by
   // foo_maker.
   CHECK_EQ(heap_object, a_foo->raw_feedback_cell());
@@ -293,8 +293,8 @@ TEST_F(FeedbackVectorTest, VectorCallFeedbackForArray) {
   FeedbackNexus nexus(feedback_vector, slot);
 
   CHECK_EQ(InlineCacheState::MONOMORPHIC, nexus.ic_state());
-  HeapObject heap_object;
-  CHECK(nexus.GetFeedback()->GetHeapObjectIfWeak(&heap_object));
+  Tagged<HeapObject> heap_object;
+  CHECK(nexus.GetFeedback().GetHeapObjectIfWeak(&heap_object));
   CHECK_EQ(*isolate->array_function(), heap_object);
 
   InvokeMajorGC();
@@ -354,7 +354,7 @@ TEST_F(FeedbackVectorTest, VectorConstructCounts) {
   FeedbackNexus nexus(feedback_vector, slot);
   CHECK_EQ(InlineCacheState::MONOMORPHIC, nexus.ic_state());
 
-  CHECK(feedback_vector->Get(slot)->IsWeak());
+  CHECK(feedback_vector->Get(slot).IsWeak());
 
   TryRunJS("f(Foo); f(Foo);");
   CHECK_EQ(InlineCacheState::MONOMORPHIC, nexus.ic_state());
@@ -513,15 +513,23 @@ TEST_F(FeedbackVectorTest, VectorLoadGlobalICSlotSharing) {
   Handle<FeedbackVector> feedback_vector =
       Handle<FeedbackVector>(f->feedback_vector(), isolate);
   FeedbackVectorHelper helper(feedback_vector);
-  CHECK_EQ(2, helper.slot_count());
+  CHECK_EQ(4, helper.slot_count());
   CHECK_SLOT_KIND(helper, 0, FeedbackSlotKind::kLoadGlobalNotInsideTypeof);
   CHECK_SLOT_KIND(helper, 1, FeedbackSlotKind::kLoadGlobalInsideTypeof);
+  CHECK_SLOT_KIND(helper, 2, FeedbackSlotKind::kTypeOf);
+  CHECK_SLOT_KIND(helper, 3, FeedbackSlotKind::kTypeOf);
   FeedbackSlot slot1 = helper.slot(0);
   FeedbackSlot slot2 = helper.slot(1);
+  FeedbackSlot slot3 = helper.slot(2);
+  FeedbackSlot slot4 = helper.slot(3);
   CHECK_EQ(InlineCacheState::MONOMORPHIC,
            FeedbackNexus(feedback_vector, slot1).ic_state());
   CHECK_EQ(InlineCacheState::MONOMORPHIC,
            FeedbackNexus(feedback_vector, slot2).ic_state());
+  CHECK_EQ(InlineCacheState::MONOMORPHIC,
+           FeedbackNexus(feedback_vector, slot3).ic_state());
+  CHECK_EQ(InlineCacheState::MONOMORPHIC,
+           FeedbackNexus(feedback_vector, slot4).ic_state());
 }
 
 TEST_F(FeedbackVectorTest, VectorLoadICOnSmi) {
@@ -546,7 +554,7 @@ TEST_F(FeedbackVectorTest, VectorLoadICOnSmi) {
   FeedbackNexus nexus(feedback_vector, slot);
   CHECK_EQ(InlineCacheState::MONOMORPHIC, nexus.ic_state());
   // Verify that the monomorphic map is the one we expect.
-  Map number_map = ReadOnlyRoots(heap).heap_number_map();
+  Tagged<Map> number_map = ReadOnlyRoots(heap).heap_number_map();
   CHECK_EQ(number_map, nexus.GetFirstMap());
 
   // Now go polymorphic on o.

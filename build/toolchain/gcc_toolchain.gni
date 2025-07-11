@@ -7,9 +7,9 @@ import("//build/config/compiler/compiler.gni")
 import("//build/config/coverage/coverage.gni")
 import("//build/config/rust.gni")
 import("//build/config/sanitizers/sanitizers.gni")
+import("//build/config/sysroot.gni")
 import("//build/config/v8_target_cpu.gni")
 import("//build/toolchain/cc_wrapper.gni")
-import("//build/toolchain/goma.gni")
 import("//build/toolchain/rbe.gni")
 import("//build/toolchain/toolchain.gni")
 
@@ -30,8 +30,11 @@ declare_args() {
       (target_os == "android" || target_os == "win")
 
   # Use -MD instead of -MMD for compiler commands. This is useful for tracking
-  # the comprehensive set of dependencies.
-  system_headers_in_deps = false
+  # the comprehensive set of dependencies.  It's also required when building
+  # without the sysroot so that updates to system header files trigger a
+  # rebuild (when using the sysroot, the CR_SYSROOT_KEY define takes care of
+  # this already).
+  system_headers_in_deps = !use_sysroot
 }
 
 # When the arg is set via args.gn, it applies to all toolchains. In order to not
@@ -154,99 +157,65 @@ template("single_gcc_toolchain") {
       }
     }
 
-    # When the invoker has explicitly overridden use_remoteexec, use_goma or
+    # When the invoker has explicitly overridden use_remoteexec or
     # cc_wrapper in the toolchain args, use those values, otherwise default
     # to the global one.  This works because the only reasonable override
     # that toolchains might supply for these values are to force-disable them.
-    if (defined(toolchain_args.use_remoteexec)) {
-      toolchain_uses_remoteexec = toolchain_args.use_remoteexec
+    if (defined(toolchain_args.use_reclient)) {
+      toolchain_uses_reclient = toolchain_args.use_reclient
     } else {
-      toolchain_uses_remoteexec = use_remoteexec
+      toolchain_uses_reclient = use_reclient
     }
-    if (defined(toolchain_args.use_remoteexec_links)) {
-      toolchain_uses_remoteexec_links = toolchain_args.use_remoteexec_links
+    if (defined(toolchain_args.use_reclient_links)) {
+      toolchain_uses_reclient_links = toolchain_args.use_reclient_links
     } else {
-      toolchain_uses_remoteexec_links = use_remoteexec_links
-    }
-    if (defined(toolchain_args.use_goma)) {
-      toolchain_uses_goma = toolchain_args.use_goma
-    } else {
-      toolchain_uses_goma = use_goma
+      toolchain_uses_reclient_links = use_reclient_links
     }
 
-    # x86_64-nacl-* is ELF-32 and Goma/RBE won't support ELF-32.
-    if (toolchain_uses_goma &&
-        get_path_info(invoker.cc, "name") == "x86_64-nacl-gcc") {
-      # it will also disable x86_64-nacl-g++ since these are in
-      # the same toolchain.
-      toolchain_uses_goma = false
-    }
     if (defined(toolchain_args.cc_wrapper)) {
       toolchain_cc_wrapper = toolchain_args.cc_wrapper
     } else {
       toolchain_cc_wrapper = cc_wrapper
     }
-    assert(!(toolchain_uses_remoteexec && toolchain_uses_goma),
-           "Goma and re-client can't be used together.")
-    assert(!(toolchain_cc_wrapper != "" && toolchain_uses_remoteexec),
+    assert(!(toolchain_cc_wrapper != "" && toolchain_uses_reclient),
            "re-client and cc_wrapper can't be used together.")
-    assert(!(toolchain_cc_wrapper != "" && toolchain_uses_goma),
-           "Goma and cc_wrapper can't be used together.")
 
-    # When the invoker has explicitly overridden use_goma or cc_wrapper in the
+    # When the invoker has explicitly overridden cc_wrapper in the
     # toolchain args, use those values, otherwise default to the global one.
     # This works because the only reasonable override that toolchains might
     # supply for these values are to force-disable them.
-    # But if needs_gomacc_path_arg is set in a Chrome OS build, the toolchain
-    # wrapper will have picked up gomacc via cmd-line arg. So need to prepend
-    # gomacc in that case.
-    goma_path = "$goma_dir/gomacc"
-    if (toolchain_uses_remoteexec &&
-        (!defined(invoker_toolchain_args.needs_gomacc_path_arg) ||
-         !invoker_toolchain_args.needs_gomacc_path_arg)) {
-      if (defined(toolchain_args.rbe_cc_cfg_file)) {
-        toolchain_rbe_cc_cfg_file = toolchain_args.rbe_cc_cfg_file
+    # But if needs_rewrapper_path_arg is set in a Chrome OS build, the
+    # toolchain wrapper will have picked up rewrapper via cmd-line arg. So
+    # need to prepend rewrapper in that case.
+    if (toolchain_uses_reclient &&
+        (!defined(invoker.needs_rewrapper_path_arg) ||
+         !invoker.needs_rewrapper_path_arg)) {
+      if (defined(toolchain_args.reclient_cc_cfg_file)) {
+        toolchain_reclient_cc_cfg_file = toolchain_args.reclient_cc_cfg_file
       } else {
-        toolchain_rbe_cc_cfg_file = rbe_cc_cfg_file
+        toolchain_reclient_cc_cfg_file = reclient_cc_cfg_file
       }
 
-      # C/C++ (clang) rewrapper prefix to use when use_remoteexec is true.
-      compiler_prefix = "${rbe_bin_dir}/rewrapper -cfg=${toolchain_rbe_cc_cfg_file} -exec_root=${rbe_exec_root} "
-    } else if (toolchain_uses_goma &&
-               (!defined(invoker_toolchain_args.needs_gomacc_path_arg) ||
-                !invoker_toolchain_args.needs_gomacc_path_arg)) {
-      compiler_prefix = "${goma_path} "
-      if (use_goma_rust) {
-        rust_compiler_prefix = compiler_prefix
-      }
+      # C/C++ (clang) rewrapper prefix to use when use_reclient is true.
+      compiler_prefix = "${reclient_bin_dir}/rewrapper -cfg=${toolchain_reclient_cc_cfg_file}${rbe_bug_326584510_missing_inputs} -exec_root=${rbe_exec_root} "
     } else {
       compiler_prefix = "${toolchain_cc_wrapper} "
+
+      # Prevent warning about unused variable since it is not read in the code
+      # paths when reclient is not needed.
+      not_needed(invoker, [ "needs_rewrapper_path_arg" ])
     }
 
-    if (toolchain_uses_remoteexec_links) {
-      if (defined(toolchain_args.rbe_link_cfg_file)) {
-        toolchain_rbe_link_cfg_file = toolchain_args.rbe_link_cfg_file
+    if (toolchain_uses_reclient_links) {
+      if (defined(toolchain_args.reclient_link_cfg_file)) {
+        toolchain_reclient_link_cfg_file = toolchain_args.reclient_link_cfg_file
       } else {
-        toolchain_rbe_link_cfg_file = rbe_link_cfg_file
+        toolchain_reclient_link_cfg_file = reclient_link_cfg_file
       }
-      link_prefix = "${rbe_bin_dir}/rewrapper -cfg=${toolchain_rbe_link_cfg_file} -exec_root=${rbe_exec_root} "
-      not_needed([ "goma_path" ])
-    } else if (use_goma_thin_lto && toolchain_uses_goma && use_thin_lto) {
-      # remote_ld.py uses autoninja in an attempt to set a reasonable
-      # number of jobs, but this results in too low a value on
-      # Chrome OS builders. So we pass in an explicit value.
-      link_prefix =
-          "\"$python_path\" " +
-          rebase_path("//tools/clang/scripts/remote_ld.py", root_build_dir) +
-          " --wrapper ${goma_path} --jobs 200 -- "
+      link_prefix = "${reclient_bin_dir}/rewrapper -cfg=${toolchain_reclient_link_cfg_file} -exec_root=${rbe_exec_root} "
     } else {
       link_prefix = ""
-      not_needed([ "goma_path" ])
     }
-
-    # Create a distinct variable for "asm", since coverage runs pass a bunch of
-    # flags to clang/clang++ that are nonsensical on assembler runs.
-    asm_prefix = compiler_prefix
 
     # A specific toolchain may wish to avoid coverage instrumentation, so we
     # allow the global "use_clang_coverage" arg to be overridden.
@@ -293,7 +262,11 @@ template("single_gcc_toolchain") {
 
     cc = compiler_prefix + invoker.cc
     cxx = compiler_prefix + invoker.cxx
-    asm = asm_prefix + invoker.cc
+
+    # "asm" doesn't support any of toolchain_cc_wrapper and
+    # toolchain_uses_reclient. The coverage flags are also nonsensical on
+    # assembler runs.
+    asm = invoker.cc
     ar = invoker.ar
     ld = link_prefix + invoker.ld
     if (defined(invoker.readelf)) {
@@ -430,7 +403,7 @@ template("single_gcc_toolchain") {
       description = "AR {{output}}"
       outputs = [ "{{output_dir}}/{{target_output_name}}{{output_extension}}" ]
 
-      # Shared libraries go in the target out directory by default so we can
+      # Static libraries go in the target out directory by default so we can
       # generate different targets with the same name and not have them collide.
       default_output_dir = "{{target_out_dir}}"
       default_output_extension = ".a"
@@ -703,10 +676,11 @@ template("single_gcc_toolchain") {
       if (!defined(rust_compiler_prefix)) {
         rust_compiler_prefix = ""
       }
-      rustc_bin = rebase_path("${rust_sysroot}/bin/rustc", root_build_dir)
+      rust_sysroot_relative = rebase_path(rust_sysroot, root_build_dir)
+      rustc_bin = "$rust_sysroot_relative/bin/rustc"
       rustc = "$rust_compiler_prefix${rustc_bin}"
-      rust_sysroot_relative_to_out = rebase_path(rust_sysroot, root_out_dir)
-      rustc_wrapper = rebase_path("//build/rust/rustc_wrapper.py")
+      rustc_wrapper =
+          rebase_path("//build/rust/rustc_wrapper.py", root_build_dir)
 
       # RSP manipulation due to https://bugs.chromium.org/p/gn/issues/detail?id=249
       tool("rust_staticlib") {
@@ -716,13 +690,17 @@ template("single_gcc_toolchain") {
 
         default_output_extension = ".a"
         output_prefix = "lib"
-        default_output_dir = "{{root_out_dir}}"
+
+        # Static libraries go in the target out directory by default so we can
+        # generate different targets with the same name and not have them
+        # collide.
+        default_output_dir = "{{target_out_dir}}"
         description = "RUST(STATICLIB) {{output}}"
         outputs = [ libname ]
 
-        rspfile_content = "{{rustdeps}} {{externs}}"
+        rspfile_content = "{{rustdeps}} {{externs}} SOURCES {{sources}}"
         command = "\"$python_path\" \"$rustc_wrapper\" --rustc=$rustc --depfile=$depfile --rsp=$rspfile -- -Clinker=\"${invoker.cxx}\" $rustc_common_args --emit=dep-info=$depfile,link -o $libname LDFLAGS RUSTENV {{rustenv}}"
-        rust_sysroot = rust_sysroot_relative_to_out
+        rust_sysroot = rust_sysroot_relative
       }
 
       tool("rust_rlib") {
@@ -731,22 +709,23 @@ template("single_gcc_toolchain") {
         # actually liblibc.rlib).
         rlibname =
             "{{output_dir}}/lib{{target_output_name}}{{output_extension}}"
+        rspfile = "$rlibname.rsp"
         depfile = "$rlibname.d"
-
-        # Do not use rsp files in this (common) case because they occupy the
-        # ninja main thread, and {{rlibs}} have shorter command lines than
-        # fully linked targets.
 
         default_output_extension = ".rlib"
 
         # This is prefixed unconditionally in `rlibname`.
         # output_prefix = "lib"
-        default_output_dir = "{{root_out_dir}}"
+        # Static libraries go in the target out directory by default so we can
+        # generate different targets with the same name and not have them
+        # collide.
+        default_output_dir = "{{target_out_dir}}"
         description = "RUST {{output}}"
         outputs = [ rlibname ]
 
-        command = "\"$python_path\" \"$rustc_wrapper\" --rustc=$rustc --depfile=$depfile -- -Clinker=\"${invoker.cxx}\" $rustc_common_args {{rustdeps}} {{externs}} --emit=dep-info=$depfile,link -o $rlibname LDFLAGS RUSTENV {{rustenv}}"
-        rust_sysroot = rust_sysroot_relative_to_out
+        rspfile_content = "{{rustdeps}} {{externs}} SOURCES {{sources}}"
+        command = "\"$python_path\" \"$rustc_wrapper\" --rustc=$rustc --depfile=$depfile --rsp=$rspfile -- -Clinker=\"${invoker.cxx}\" $rustc_common_args --emit=dep-info=$depfile,link -o $rlibname LDFLAGS RUSTENV {{rustenv}}"
+        rust_sysroot = rust_sysroot_relative
       }
 
       tool("rust_bin") {
@@ -760,9 +739,9 @@ template("single_gcc_toolchain") {
         description = "RUST(BIN) {{output}}"
         outputs = [ exename ]
 
-        rspfile_content = "{{rustdeps}} {{externs}}"
+        rspfile_content = "{{rustdeps}} {{externs}} SOURCES {{sources}}"
         command = "\"$python_path\" \"$rustc_wrapper\" --rustc=$rustc --depfile=$depfile --rsp=$rspfile -- -Clinker=\"${invoker.cxx}\" $rustc_common_args --emit=dep-info=$depfile,link -o $exename LDFLAGS {{ldflags}} ${extra_ldflags} RUSTENV {{rustenv}}"
-        rust_sysroot = rust_sysroot_relative_to_out
+        rust_sysroot = rust_sysroot_relative
       }
 
       tool("rust_cdylib") {
@@ -777,9 +756,9 @@ template("single_gcc_toolchain") {
         description = "RUST(CDYLIB) {{output}}"
         outputs = [ dllname ]
 
-        rspfile_content = "{{rustdeps}} {{externs}}"
+        rspfile_content = "{{rustdeps}} {{externs}} SOURCES {{sources}}"
         command = "\"$python_path\" \"$rustc_wrapper\" --rustc=$rustc --depfile=$depfile --rsp=$rspfile -- -Clinker=\"${invoker.cxx}\" $rustc_common_args --emit=dep-info=$depfile,link -o $dllname LDFLAGS {{ldflags}} ${extra_ldflags} RUSTENV {{rustenv}}"
-        rust_sysroot = rust_sysroot_relative_to_out
+        rust_sysroot = rust_sysroot_relative
       }
 
       tool("rust_macro") {
@@ -794,9 +773,9 @@ template("single_gcc_toolchain") {
         description = "RUST(MACRO) {{output}}"
         outputs = [ dllname ]
 
-        rspfile_content = "{{rustdeps}} {{externs}}"
+        rspfile_content = "{{rustdeps}} {{externs}} SOURCES {{sources}}"
         command = "\"$python_path\" \"$rustc_wrapper\" --rustc=$rustc --depfile=$depfile --rsp=$rspfile -- -Clinker=\"${invoker.cxx}\" $rustc_common_args --emit=dep-info=$depfile,link -o $dllname LDFLAGS {{ldflags}} ${extra_ldflags} RUSTENV {{rustenv}}"
-        rust_sysroot = rust_sysroot_relative_to_out
+        rust_sysroot = rust_sysroot_relative
       }
     }
 
@@ -857,6 +836,8 @@ template("gcc_toolchain") {
         is_official_build = false
         use_clang_coverage = false
         use_sanitizer_coverage = false
+        generate_linker_map = false
+        use_thin_lto = false
       }
 
       # When cross-compiling we don't want to use the target platform's file
@@ -871,8 +852,7 @@ template("gcc_toolchain") {
 # be specified by the invoker, and optionally toolprefix if it's a
 # cross-compile case. Note that for a cross-compile case this toolchain
 # requires a config to pass the appropriate -target option, or else it will
-# actually just be doing a native compile. The invoker can optionally override
-# use_gold too.
+# actually just be doing a native compile.
 template("clang_toolchain") {
   gcc_toolchain(target_name) {
     _path = "$clang_base_path/bin"
@@ -892,16 +872,7 @@ template("clang_toolchain") {
     ar = "${prefix}/llvm-ar"
     nm = "${prefix}/llvm-nm"
 
-    forward_variables_from(invoker,
-                           [
-                             "strip",
-                             "default_shlib_subdir",
-                             "dwp",
-                             "enable_linker_map",
-                             "loadable_module_extension",
-                             "propagates_configs",
-                             "use_unstripped_as_runtime_outputs",
-                           ])
+    forward_variables_from(invoker, "*", [ "toolchain_args" ])
 
     toolchain_args = {
       if (defined(invoker.toolchain_args)) {

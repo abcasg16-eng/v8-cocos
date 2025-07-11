@@ -38,8 +38,8 @@ class WasmValueObject : public JSObject {
  public:
   DECL_CAST(WasmValueObject)
 
-  DECL_ACCESSORS(type, String)
-  DECL_ACCESSORS(value, Object)
+  DECL_ACCESSORS(type, Tagged<String>)
+  DECL_ACCESSORS(value, Tagged<Object>)
 
   // Dispatched behavior.
   DECL_PRINTER(WasmValueObject)
@@ -70,9 +70,9 @@ Handle<JSObject> GetWasmDebugProxy(WasmFrame* frame);
 
 std::unique_ptr<debug::ScopeIterator> GetWasmScopeIterator(WasmFrame* frame);
 
-Handle<String> GetWasmFunctionDebugName(Isolate* isolate,
-                                        Handle<WasmInstanceObject> instance,
-                                        uint32_t func_index);
+Handle<String> GetWasmFunctionDebugName(
+    Isolate* isolate, Handle<WasmTrustedInstanceData> instance_data,
+    uint32_t func_index);
 
 Handle<ArrayList> AddWasmInstanceObjectInternalProperties(
     Isolate* isolate, Handle<ArrayList> result,

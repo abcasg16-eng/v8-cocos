@@ -26,12 +26,6 @@ constexpr const char* const kRawPtrManualPathsToIgnore[] = {
     // Exclude to prevent PartitionAlloc<->raw_ptr<T> cyclical dependency.
     "base/allocator/",
 
-    // Exclude dependences of raw_ptr.h
-    // TODO(bartekn): Update the list of dependencies.
-    "base/logging.h",
-    "base/synchronization/lock_impl.h",
-    "base/check.h",
-
     // win:pe_image target that uses this file does not depend on base/.
     "base/no_destructor.h",
 
@@ -45,16 +39,13 @@ constexpr const char* const kRawPtrManualPathsToIgnore[] = {
     // Exclude tools that do not ship in the Chrome binary. Can't depend on
     // //base.
     "base/android/linker/",
-    "chrome/chrome_cleaner/",
-    "tools/",
-    "net/tools/",
+    "/tools/",  // catches subdirs e.g. /net/tools, but not devtools/ etc.
     "chrome/chrome_elf/",
     "chrome/installer/mini_installer/",
     "testing/platform_test.h",
 
     // DEPS prohibits includes from base/
     "chrome/install_static",
-    "net/cert/pki",
     "sandbox/mac/",
 
     // Exclude pocdll.dll as it doesn't depend on //base and only used for
@@ -102,6 +93,13 @@ constexpr const char* const kRawPtrManualPathsToIgnore[] = {
     "third_party/blink/public/web/",  // TODO: Consider renaming this directory
                                       // to",
                                       // public/renderer?",
+    // The below paths are an explicitly listed subset of Renderer-only code,
+    // because the plan is to Oilpanize it.
+    // TODO(crbug.com/330759291): Remove once Oilpanization is completed or
+    // abandoned.
+    "third_party/blink/renderer/core/paint/",
+    "third_party/blink/renderer/platform/graphics/compositing/",
+    "third_party/blink/renderer/platform/graphics/paint/",
 
     // Contains sysroot dirs like debian_bullseye_amd64-sysroot/ that are not
     // part of the repository.
@@ -112,75 +110,6 @@ constexpr const char* const kRawPtrManualPathsToIgnore[] = {
     // cannot
     // catch it even though glslang_tab.cpp.h is in third_party/
     "MachineIndependent/",
-
-    // Exclude paths in separate repositories - i.e. in directories that
-    // 1. Contain a ".git" subdirectory
-    // 2. And hasn't been excluded via "third_party/" substring in their path
-    //    (see the isInThirdPartyLocation AST matcher in
-    //    RewriteRawPtrFields.cpp).
-    //
-    // The list below has been generated with:
-    //
-    //  $ find . -type d -name .git | \
-//      sed -e 's/\.git$//g' | \
-//      sed -e 's/\.\///g' | \
-//      grep -v third_party | \
-//      grep -v '^$' | \
-//      sort | uniq > ~/scratch/git-paths
-    "third_party/clang-format/script/",
-    "chrome/app/theme/default_100_percent/google_chrome/",
-    "chrome/app/theme/default_200_percent/google_chrome/",
-    "chrome/app/theme/google_chrome/",
-    "chrome/app/vector_icons/google_chrome/",
-    "chrome/browser/enterprise/connectors/internal/",
-    "chrome/browser/google/linkdoctor_internal/",
-    "chrome/browser/internal/",
-    "chrome/browser/media/engagement_internal/",
-    "chrome/browser/resources/chromeos/quickoffice/",
-    "chrome/browser/resources/media_router_internal/",
-    "chrome/browser/resources/preinstalled_web_apps/internal/",
-    "chrome/browser/resources/settings_internal/",
-    "chrome/browser/spellchecker/internal/",
-    "chrome/browser/ui/media_router/internal/",
-    "chrome/installer/mac/internal/",
-    "chrome/test/data/firefox3_profile/searchplugins/",
-    "chrome/test/data/firefox3_searchplugins/",
-    "chrome/test/data/gpu/vt/",
-    "chrome/test/data/pdf_private/",
-    "chrome/test/data/perf/canvas_bench/",
-    "chrome/test/data/perf/frame_rate/content/",
-    "chrome/test/data/perf/frame_rate/private/",
-    "chrome/test/data/perf/private/",
-    "chrome/test/data/xr/webvr_info/",
-    "chrome/test/media_router/internal/",
-    "chrome/test/python_tests/",
-    "chrome/tools/memory/",
-    "clank/",
-    "components/history_clusters/internal/",
-    "components/ntp_tiles/resources/internal/",
-    "components/optimization_guide/internal/",
-    "components/resources/default_100_percent/google_chrome/",
-    "components/resources/default_200_percent/google_chrome/",
-    "components/resources/default_300_percent/google_chrome/",
-    "components/site_isolation/internal/",
-    "content/test/data/plugin/",
-    "docs/website/",
-    "google_apis/internal/",
-    "media/cdm/api/",
-    "native_client/",
-    "remoting/android/internal/",
-    "remoting/host/installer/linux/internal/",
-    "remoting/internal/",
-    "remoting/test/internal/",
-    "remoting/tools/internal/",
-    "remoting/webapp/app_remoting/internal/",
-    "tools/page_cycler/acid3/",
-    "tools/perf/data/",
-    "ui/file_manager/internal/",
-    "v8/",
-    "webkit/data/bmp_decoder/",
-    "webkit/data/ico_decoder/",
-    "webkit/data/test_shell/plugins/",
 };
 
 #endif  // TOOLS_CLANG_PLUGINS_RAWPTRMANUALPATHSTOIGNORE_H_

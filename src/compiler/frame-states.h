@@ -64,18 +64,22 @@ class OutputFrameStateCombine {
   size_t const parameter_;
 };
 
-
 // The type of stack frame that a FrameState node represents.
 enum class FrameStateType {
-  kUnoptimizedFunction,            // Represents an UnoptimizedFrame.
-  kInlinedExtraArguments,          // Represents inlined extra arguments.
-  kConstructStub,                  // Represents a ConstructStubFrame.
-  kBuiltinContinuation,            // Represents a continuation to a stub.
-#if V8_ENABLE_WEBASSEMBLY          // ↓ WebAssembly only
+  kUnoptimizedFunction,    // Represents an UnoptimizedFrame.
+  kInlinedExtraArguments,  // Represents inlined extra arguments.
+  kConstructCreateStub,    // Represents a frame created before creating a new
+                           // object in the construct stub.
+  kConstructInvokeStub,    // Represents a frame created before invoking the
+                           // constructor in the construct stub.
+  kBuiltinContinuation,    // Represents a continuation to a stub.
+#if V8_ENABLE_WEBASSEMBLY  // ↓ WebAssembly only
   kJSToWasmBuiltinContinuation,    // Represents a lazy deopt continuation for a
                                    // JS to Wasm call.
   kWasmInlinedIntoJS,              // Represents a Wasm function inlined into a
                                    // JS function.
+  kLiftoffFunction,                // Represents an unoptimized (liftoff) wasm
+                                   // function.
 #endif                             // ↑ WebAssembly only
   kJavaScriptBuiltinContinuation,  // Represents a continuation to a JavaScipt
                                    // builtin.
@@ -88,28 +92,48 @@ class FrameStateFunctionInfo {
  public:
   FrameStateFunctionInfo(FrameStateType type, int parameter_count,
                          int local_count,
-                         Handle<SharedFunctionInfo> shared_info)
+                         Handle<SharedFunctionInfo> shared_info,
+                         uint32_t wasm_liftoff_frame_size = 0,
+                         uint32_t wasm_function_index = -1)
       : type_(type),
         parameter_count_(parameter_count),
         local_count_(local_count),
-        shared_info_(shared_info) {}
+#if V8_ENABLE_WEBASSEMBLY
+        wasm_liftoff_frame_size_(wasm_liftoff_frame_size),
+        wasm_function_index_(wasm_function_index),
+#endif
+        shared_info_(shared_info) {
+  }
 
   int local_count() const { return local_count_; }
   int parameter_count() const { return parameter_count_; }
   Handle<SharedFunctionInfo> shared_info() const { return shared_info_; }
   FrameStateType type() const { return type_; }
+  uint32_t wasm_liftoff_frame_size() const {
+    return wasm_liftoff_frame_size_;
+  }
+  uint32_t wasm_function_index() const { return wasm_function_index_; }
 
   static bool IsJSFunctionType(FrameStateType type) {
+    // This must be in sync with TRANSLATION_JS_FRAME_OPCODE_LIST in
+    // translation-opcode.h or bad things happen.
     return type == FrameStateType::kUnoptimizedFunction ||
            type == FrameStateType::kJavaScriptBuiltinContinuation ||
            type == FrameStateType::kJavaScriptBuiltinContinuationWithCatch;
   }
 
  private:
-  FrameStateType const type_;
-  int const parameter_count_;
-  int const local_count_;
-  Handle<SharedFunctionInfo> const shared_info_;
+  const FrameStateType type_;
+  const int parameter_count_;
+  const int local_count_;
+#if V8_ENABLE_WEBASSEMBLY
+  const uint32_t wasm_liftoff_frame_size_ = 0;
+  const uint32_t wasm_function_index_ = -1;
+#else
+  static constexpr uint32_t wasm_liftoff_frame_size_ = 0;
+  static constexpr uint32_t wasm_function_index_ = -1;
+#endif
+  const Handle<SharedFunctionInfo> shared_info_;
 };
 
 #if V8_ENABLE_WEBASSEMBLY
@@ -198,6 +222,15 @@ FrameState CreateJavaScriptBuiltinContinuationFrameState(
 FrameState CreateGenericLazyDeoptContinuationFrameState(
     JSGraph* graph, SharedFunctionInfoRef shared, Node* target, Node* context,
     Node* receiver, Node* outer_frame_state);
+
+// Creates GenericLazyDeoptContinuationFrameState if
+// --experimental-stack-trace-frames is enabled, returns outer_frame_state
+// otherwise.
+Node* CreateInlinedApiFunctionFrameState(JSGraph* graph,
+                                         SharedFunctionInfoRef shared,
+                                         Node* target, Node* context,
+                                         Node* receiver,
+                                         Node* outer_frame_state);
 
 // Creates a FrameState otherwise identical to `frame_state` except the
 // OutputFrameStateCombine is changed.

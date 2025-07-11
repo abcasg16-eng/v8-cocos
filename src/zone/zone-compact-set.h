@@ -31,7 +31,7 @@ struct ZoneCompactSetTraits<Handle<T>> {
     // Use address() instead of location() to get around handle access checks
     // (we're not actually dereferencing the handle so it's safe to read its
     // location)
-    return base::bit_cast<Address*>(handle.address());
+    return reinterpret_cast<Address*>(handle.address());
   }
   static handle_type PointerToHandle(data_type* ptr) {
     return handle_type(ptr);
@@ -269,7 +269,7 @@ class ZoneCompactSet final {
   enum Tag { kSingletonTag = 0, kEmptyTag = 1, kListTag = 2 };
 
   using List = base::Vector<data_type*>;
-  using PointerWithPayload = base::PointerWithPayload<void, Tag, 2>;
+  using PointerWithPayload = base::PointerWithPayload<void*, Tag, 2>;
 
   bool is_singleton() const { return data_.GetPayload() == kSingletonTag; }
   bool is_list() const { return data_.GetPayload() == kListTag; }
@@ -288,7 +288,7 @@ class ZoneCompactSet final {
     // We need to allocate both the List, and the backing store of the list, in
     // the zone, so that we have a List pointer and not an on-stack List (which
     // we can't use in the `data_` pointer).
-    return zone->New<List>(zone->NewArray<data_type*>(size), size);
+    return zone->New<List>(zone->AllocateArray<data_type*>(size), size);
   }
 
   static PointerWithPayload EmptyValue() {

@@ -181,18 +181,19 @@ class V8_EXPORT_PRIVATE JSHeapBroker {
 #endif  // DEBUG
 
   // Returns the handle from root index table for read only heap objects.
-  Handle<Object> GetRootHandle(Object object);
+  Handle<Object> GetRootHandle(Tagged<Object> object);
 
   // Never returns nullptr.
   ObjectData* GetOrCreateData(Handle<Object> object,
                               GetOrCreateDataFlags flags = {});
-  ObjectData* GetOrCreateData(Object object, GetOrCreateDataFlags flags = {});
+  ObjectData* GetOrCreateData(Tagged<Object> object,
+                              GetOrCreateDataFlags flags = {});
 
   // Gets data only if we have it. However, thin wrappers will be created for
   // smis, read-only objects and never-serialized objects.
   ObjectData* TryGetOrCreateData(Handle<Object> object,
                                  GetOrCreateDataFlags flags = {});
-  ObjectData* TryGetOrCreateData(Object object,
+  ObjectData* TryGetOrCreateData(Tagged<Object> object,
                                  GetOrCreateDataFlags flags = {});
 
   // Check if {object} is any native context's %ArrayPrototype% or
@@ -222,6 +223,7 @@ class V8_EXPORT_PRIVATE JSHeapBroker {
       FeedbackSource const& source);
   ProcessedFeedback const& GetFeedbackForInstanceOf(
       FeedbackSource const& source);
+  TypeOfFeedback::Result GetFeedbackForTypeOf(FeedbackSource const& source);
   ProcessedFeedback const& GetFeedbackForArrayOrObjectLiteral(
       FeedbackSource const& source);
   ProcessedFeedback const& GetFeedbackForRegExpLiteral(
@@ -237,6 +239,8 @@ class V8_EXPORT_PRIVATE JSHeapBroker {
   ProcessedFeedback const& ProcessFeedbackForCompareOperation(
       FeedbackSource const& source);
   ProcessedFeedback const& ProcessFeedbackForForIn(
+      FeedbackSource const& source);
+  ProcessedFeedback const& ProcessFeedbackForTypeOf(
       FeedbackSource const& source);
 
   bool FeedbackIsInsufficient(FeedbackSource const& source) const;
@@ -286,12 +290,20 @@ class V8_EXPORT_PRIVATE JSHeapBroker {
     Address address = object.ptr();
     if (Internals::HasHeapObjectTag(address)) {
       RootIndex root_index;
-      if (root_index_map_.Lookup(address, &root_index)) {
+      // CollectArrayAndObjectPrototypes calls this function often with T equal
+      // to JSObject. The root index map only contains immortal, immutable
+      // objects; it never contains any instances of type JSObject, since
+      // JSObjects must exist within a NativeContext, and NativeContexts can be
+      // created and destroyed. Thus, we can skip the lookup in the root index
+      // map for those values and save a little time.
+      if constexpr (std::is_convertible_v<T, JSObject>) {
+        DCHECK(!root_index_map_.Lookup(address, &root_index));
+      } else if (root_index_map_.Lookup(address, &root_index)) {
         return Handle<T>(isolate_->root_handle(root_index).location());
       }
     }
 
-    Object obj(address);
+    Tagged<Object> obj(address);
     auto find_result = canonical_handles_->FindOrInsert(obj);
     if (find_result.already_exists) return Handle<T>(*find_result.entry);
 
@@ -304,12 +316,6 @@ class V8_EXPORT_PRIVATE JSHeapBroker {
       *find_result.entry = Handle<T>(object, isolate()).location();
     }
     return Handle<T>(*find_result.entry);
-  }
-
-  template <typename T>
-  Handle<T> CanonicalPersistentHandle(T object) {
-    static_assert(kTaggedCanConvertToRawObjects);
-    return CanonicalPersistentHandle<T>(Tagged<T>(object));
   }
 
   template <typename T>
@@ -335,7 +341,7 @@ class V8_EXPORT_PRIVATE JSHeapBroker {
         return true;
       }
     }
-    return canonical_handles_->Find(Object(address)) != nullptr;
+    return canonical_handles_->Find(Tagged<Object>(address)) != nullptr;
   }
 
   std::string Trace() const;
@@ -378,8 +384,8 @@ class V8_EXPORT_PRIVATE JSHeapBroker {
   // thus safe to read from a memory safety perspective. The converse does not
   // necessarily hold.
   bool ObjectMayBeUninitialized(Handle<Object> object) const;
-  bool ObjectMayBeUninitialized(Object object) const;
-  bool ObjectMayBeUninitialized(HeapObject object) const;
+  bool ObjectMayBeUninitialized(Tagged<Object> object) const;
+  bool ObjectMayBeUninitialized(Tagged<HeapObject> object) const;
 
   void set_dependencies(CompilationDependencies* dependencies) {
     DCHECK_NOT_NULL(dependencies);
@@ -410,6 +416,8 @@ class V8_EXPORT_PRIVATE JSHeapBroker {
   ProcessedFeedback const& ReadFeedbackForArrayOrObjectLiteral(
       FeedbackSource const& source);
   ProcessedFeedback const& ReadFeedbackForBinaryOperation(
+      FeedbackSource const& source) const;
+  ProcessedFeedback const& ReadFeedbackForTypeOf(
       FeedbackSource const& source) const;
   ProcessedFeedback const& ReadFeedbackForCall(FeedbackSource const& source);
   ProcessedFeedback const& ReadFeedbackForCompareOperation(
@@ -581,8 +589,7 @@ class V8_NODISCARD JSHeapBrokerScopeForTesting {
   JSHeapBroker* const broker_;
 };
 
-template <class T,
-          typename = std::enable_if_t<std::is_convertible<T*, Object*>::value>>
+template <class T, typename = std::enable_if_t<is_subtype_v<T, Object>>>
 OptionalRef<typename ref_traits<T>::ref_type> TryMakeRef(JSHeapBroker* broker,
                                                          ObjectData* data) {
   if (data == nullptr) return {};
@@ -597,8 +604,7 @@ OptionalRef<typename ref_traits<T>::ref_type> TryMakeRef(JSHeapBroker* broker,
 // or
 //
 //  FooRef ref = MakeRef(broker, o);
-template <class T,
-          typename = std::enable_if_t<std::is_convertible<T*, Object*>::value>>
+template <class T, typename = std::enable_if_t<is_subtype_v<T, Object>>>
 OptionalRef<typename ref_traits<T>::ref_type> TryMakeRef(
     JSHeapBroker* broker, Tagged<T> object, GetOrCreateDataFlags flags = {}) {
   ObjectData* data = broker->TryGetOrCreateData(object, flags);
@@ -608,16 +614,14 @@ OptionalRef<typename ref_traits<T>::ref_type> TryMakeRef(
   return TryMakeRef<T>(broker, data);
 }
 
-template <class T,
-          typename = std::enable_if_t<std::is_convertible<T*, Object*>::value>>
+template <class T, typename = std::enable_if_t<is_subtype_v<T, Object>>>
 OptionalRef<typename ref_traits<T>::ref_type> TryMakeRef(
     JSHeapBroker* broker, T object, GetOrCreateDataFlags flags = {}) {
   static_assert(kTaggedCanConvertToRawObjects);
   return TryMakeRef<T>(broker, Tagged<T>(object), flags);
 }
 
-template <class T,
-          typename = std::enable_if_t<std::is_convertible<T*, Object*>::value>>
+template <class T, typename = std::enable_if_t<is_subtype_v<T, Object>>>
 OptionalRef<typename ref_traits<T>::ref_type> TryMakeRef(
     JSHeapBroker* broker, Handle<T> object, GetOrCreateDataFlags flags = {}) {
   ObjectData* data = broker->TryGetOrCreateData(object, flags);
@@ -628,44 +632,38 @@ OptionalRef<typename ref_traits<T>::ref_type> TryMakeRef(
   return TryMakeRef<T>(broker, data);
 }
 
-template <class T,
-          typename = std::enable_if_t<std::is_convertible<T*, Object*>::value>>
+template <class T, typename = std::enable_if_t<is_subtype_v<T, Object>>>
 typename ref_traits<T>::ref_type MakeRef(JSHeapBroker* broker,
                                          Tagged<T> object) {
   return TryMakeRef(broker, object, kCrashOnError).value();
 }
 
-template <class T,
-          typename = std::enable_if_t<std::is_convertible<T*, Object*>::value>>
+template <class T, typename = std::enable_if_t<is_subtype_v<T, Object>>>
 typename ref_traits<T>::ref_type MakeRef(JSHeapBroker* broker, T object) {
   static_assert(kTaggedCanConvertToRawObjects);
   return TryMakeRef(broker, Tagged<T>(object), kCrashOnError).value();
 }
 
-template <class T,
-          typename = std::enable_if_t<std::is_convertible<T*, Object*>::value>>
+template <class T, typename = std::enable_if_t<is_subtype_v<T, Object>>>
 typename ref_traits<T>::ref_type MakeRef(JSHeapBroker* broker,
                                          Handle<T> object) {
   return TryMakeRef(broker, object, kCrashOnError).value();
 }
 
-template <class T,
-          typename = std::enable_if_t<std::is_convertible<T*, Object*>::value>>
+template <class T, typename = std::enable_if_t<is_subtype_v<T, Object>>>
 typename ref_traits<T>::ref_type MakeRefAssumeMemoryFence(JSHeapBroker* broker,
                                                           Tagged<T> object) {
   return TryMakeRef(broker, object, kAssumeMemoryFence | kCrashOnError).value();
 }
 
-template <class T,
-          typename = std::enable_if_t<std::is_convertible<T*, Object*>::value>>
+template <class T, typename = std::enable_if_t<is_subtype_v<T, Object>>>
 typename ref_traits<T>::ref_type MakeRefAssumeMemoryFence(JSHeapBroker* broker,
                                                           T object) {
   static_assert(kTaggedCanConvertToRawObjects);
   return TryMakeRef(broker, object, kAssumeMemoryFence | kCrashOnError).value();
 }
 
-template <class T,
-          typename = std::enable_if_t<std::is_convertible<T*, Object*>::value>>
+template <class T, typename = std::enable_if_t<is_subtype_v<T, Object>>>
 typename ref_traits<T>::ref_type MakeRefAssumeMemoryFence(JSHeapBroker* broker,
                                                           Handle<T> object) {
   return TryMakeRef(broker, object, kAssumeMemoryFence | kCrashOnError).value();
