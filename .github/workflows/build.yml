@@ -533,8 +533,8 @@ jobs:
       - name: set python
         shell: bash
         run: |
-          set PATH=${{ env.DEPOT_TOOLS_PATH }};$PATH
-          set DEPOT_TOOLS_UPDATE=0
+          export PATH=/c/depot_tools;$PATH
+          export DEPOT_TOOLS_UPDATE=0
           ${{ env.DEPOT_TOOLS_PATH }}/ensure_bootstrap
 
       - name: Install gn
