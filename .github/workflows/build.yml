@@ -533,9 +533,9 @@ jobs:
       - name: set python
         shell: bash
         run: |
-          export PATH=/c/depot_tools;$PATH
+          export PATH="/c/depot_tools:$PATH"
           export DEPOT_TOOLS_UPDATE=0
-          ${{ env.DEPOT_TOOLS_PATH }}/ensure_bootstrap
+          ensure_bootstrap
 
       - name: Install gn
         run: |
