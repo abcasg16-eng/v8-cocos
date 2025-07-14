@@ -529,6 +529,12 @@ jobs:
             git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
             ls -l /c/depot_tools
 
+      - name: set python
+        run: |
+          set PATH=${{ env.DEPOT_TOOLS_PATH }}:$PATH
+          set DEPOT_TOOLS_UPDATE=0
+          ${{ env.DEPOT_TOOLS_PATH }}/update_depot_tools.bat
+
       - name: Install gn
         run: |
           Invoke-WebRequest -OutFile gn.zip https://chrome-infra-packages.appspot.com/dl/gn/gn/windows-amd64/+/latest
