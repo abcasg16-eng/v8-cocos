@@ -530,11 +530,11 @@ jobs:
             ls -l /c/depot_tools
 
       - name: set python
-        shell: cmd
+        shell: bash
         run: |
-          set PATH=C:\depot_tools;%PATH%
+          set PATH=C:\depot_tools;$PATH
           set DEPOT_TOOLS_UPDATE=0
-          call "C:/depot_tools/update_depot_tools.bat"
+          call "C:/depot_tools/ensure_bootstrap"
 
       - name: Install gn
         run: |
