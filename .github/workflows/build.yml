@@ -526,6 +526,7 @@ jobs:
         shell: bash
         run: |
             cd /c
+            DEPOT_TOOLS_PATH=$(pwd)/depot_tools
             git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
             ls -l /c/depot_tools
 
@@ -534,7 +535,7 @@ jobs:
         run: |
           set PATH=C:\depot_tools;$PATH
           set DEPOT_TOOLS_UPDATE=0
-          call "C:/depot_tools/ensure_bootstrap"
+          ${{ env.DEPOT_TOOLS_PATH }}/ensure_bootstrap
 
       - name: Install gn
         run: |
