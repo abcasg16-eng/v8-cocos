@@ -534,7 +534,6 @@ jobs:
         shell: bash
         run: |
           export PATH="/c/depot_tools:$PATH"
-        #  export DEPOT_TOOLS_UPDATE=0
           update_depot_tools
 
       - name: Install gn
