@@ -535,7 +535,7 @@ jobs:
         run: |
           export PATH="/c/depot_tools:$PATH"
           export DEPOT_TOOLS_UPDATE=0
-          ensure_bootstrap
+          update_depot_tools
 
       - name: Install gn
         run: |
