@@ -534,6 +534,7 @@ jobs:
         shell: bash
         run: |
           export PATH="/c/depot_tools:$PATH"
+          gclient sync
           update_depot_tools
 
       - name: Install gn
