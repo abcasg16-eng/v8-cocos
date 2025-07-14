@@ -27,26 +27,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      #- name: Select XCode Version
-      #  uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd
-      #  with:
-      #    xcode-version: latest-stable
-
-      - name: Force Update Command Line Tools
-        run: |
-          sudo rm -rf /Library/Developer/CommandLineTools   #
-          sudo xcode-select --install                       #
-          sleep 30                                          #
-        timeout-minutes: 10                                 #
-
-      - name: Accept Xcode License
-        run: |
-          sudo xcode-select -s /Applications/Xcode.app      #
-          sudo xcodebuild -license accept                   #
-
-      - name: Verify Installation
-        run: |
-          xcode-select -v                                   #
+      - name: Select XCode Version
+        uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd
+        with:
+          xcode-version: latest-stable
 
       - name: Clone DepotTools
         run: |
@@ -100,7 +84,6 @@ jobs:
           echo "---------------------"
           ls -l ./out/mac/obj
           mkdir dist
-          cp ./out/mac/d8 ./dist/
           cp ./out/mac/obj/libv8_monolith.a ./dist/
           cp -r ./include ./dist/
 
@@ -134,7 +117,6 @@ jobs:
         run: |
           mkdir v8-mac-fat
           lipo -create ./v8-mac-arm64/libv8_monolith.a ./v8-mac-x64/libv8_monolith.a -output ./v8-mac-fat/libv8_monolith.a
-          lipo -create ./v8-mac-arm64/d8 ./v8-mac-x64/d8 -output ./v8-mac-fat/d8
           cp -r ./v8-mac-arm64/include ./v8-mac-fat/
 
       - name: Pack dist files
@@ -211,7 +193,12 @@ jobs:
       - name: Install llvm
         run: |
           brew install llvm
-          export PATH="/usr/local/opt/llvm/bin:$PATH"
+          brew install lld
+          export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+
+          export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"
+          export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
+
           LLVM_AR_PATH=$(which llvm-ar)
           XCODE_DEV_PATH=$(xcode-select -p)
           sudo ln -s ${LLVM_AR_PATH} ${XCODE_DEV_PATH}/Toolchains/XcodeDefault.xctoolchain/usr/bin/llvm-ar
@@ -234,7 +221,6 @@ jobs:
           echo "---------------------"
           ls -l ./out/ios/obj
           mkdir dist
-          cp ./out/ios/obj/d8 ./dist/
           cp ./out/ios/obj/libv8_monolith.a ./dist/
           cp -r ./include ./dist/
 
@@ -275,7 +261,6 @@ jobs:
         run: |
           mkdir v8-ios-fat
           lipo -create ./v8-ios-arm64/libv8_monolith.a ./v8-ios-x64/libv8_monolith.a -output ./v8-ios-fat/libv8_monolith.a
-          lipo -create ./v8-ios-arm64/d8 ./v8-ios-x64/d8 -output ./v8-ios-fat/d8
           cp -r ./v8-ios-arm64/include ./v8-ios-fat/
           cp -r ./v8-ios-simulator-arm64 ./v8-ios-fat/
           rm -rf ./v8-ios-fat/v8-ios-simulator-arm64/include
@@ -421,7 +406,6 @@ jobs:
           echo "---------------------"
           ls -l ./out/android/obj
           mkdir dist
-          cp ./out/android/d8 ./dist/
           cp ./out/android/obj/libv8_monolith.a ./dist/
           cp -r ./include ./dist/
 
@@ -826,7 +810,6 @@ jobs:
           echo "---------------------"
           ls -l ./out/oh/obj
           mkdir dist
-          cp ./out/oh/d8 ./dist/
           cp ./out/oh/obj/libv8_monolith.a ./dist/
           cp -r ./include ./dist/
 
@@ -962,7 +945,6 @@ jobs:
           echo "---------------------"
           ls -l ./out/linux/obj
           mkdir dist
-          cp ./out/linux/d8 ./dist/
           cp ./out/linux/obj/libv8_monolith.a ./dist/
           cp -r ./include ./dist/
 
