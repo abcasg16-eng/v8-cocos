@@ -531,9 +531,9 @@ jobs:
 
       - name: set python
         run: |
-          set PATH=${{ env.DEPOT_TOOLS_PATH }}:$PATH
+          set PATH=C:\depot_tools;%PATH%
           set DEPOT_TOOLS_UPDATE=0
-          ${{ env.DEPOT_TOOLS_PATH }}/update_depot_tools.bat
+          call "${{ env.DEPOT_TOOLS_PATH }}/update_depot_tools.bat"
 
       - name: Install gn
         run: |
