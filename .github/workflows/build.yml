@@ -533,7 +533,7 @@ jobs:
       - name: set python
         shell: bash
         run: |
-          set PATH=C:\depot_tools;$PATH
+          set PATH=${{ env.DEPOT_TOOLS_PATH }};$PATH
           set DEPOT_TOOLS_UPDATE=0
           ${{ env.DEPOT_TOOLS_PATH }}/ensure_bootstrap
 
