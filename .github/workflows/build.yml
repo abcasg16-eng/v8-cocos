@@ -32,6 +32,20 @@ jobs:
         with:
           xcode-version: latest-stable
 
+      # The current Xcode version 16.2 has a built-in Clang version 16, while the compilation requires Clang version 17. Therefore, LLVM needs to be installed now.
+      - name: Install llvm
+        run: |
+          brew install llvm
+          brew install lld
+          export PATH="/opt/homebrew/opt/llvm/bin:$PATH"
+
+          export LDFLAGS="-L/opt/homebrew/opt/llvm/lib"
+          export CPPFLAGS="-I/opt/homebrew/opt/llvm/include"
+
+          LLVM_AR_PATH=$(which llvm-ar)
+          XCODE_DEV_PATH=$(xcode-select -p)
+          sudo ln -s ${LLVM_AR_PATH} ${XCODE_DEV_PATH}/Toolchains/XcodeDefault.xctoolchain/usr/bin/llvm-ar
+
       - name: Clone DepotTools
         run: |
             cd ..

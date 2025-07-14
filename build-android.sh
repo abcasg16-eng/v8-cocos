@@ -53,4 +53,4 @@ use_ml_inliner=false"
 
 gn gen out/android --args="${ARGS}"
 
-ninja -C out/android v8_monolith
+ninja -C out/android v8_monolith -v

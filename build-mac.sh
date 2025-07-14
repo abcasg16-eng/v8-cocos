@@ -27,7 +27,7 @@ v8_target_cpu=\"${ARCH}\"
 enable_dsyms=false
 use_thin_lto=false
 use_lld=false
-clang_base_path=\"${XCODE_DEVELOPER_PATH}/Toolchains/XcodeDefault.xctoolchain/usr\"
+clang_base_path=\"/opt/homebrew/opt/llvm\"
 clang_use_chrome_plugins=false
 chrome_pgo_phase=0
 is_component_build=false
@@ -46,4 +46,4 @@ v8_enable_sandbox=false"
 
 gn gen out/mac --args="${ARGS}"
 
-ninja -C out/mac v8_monolith d8 -v
+ninja -C out/mac v8_monolith -v
