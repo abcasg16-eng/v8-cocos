@@ -785,7 +785,13 @@ jobs:
 
       - name: Install linux sysroot
         run: |
-          python3 build/linux/sysroot_scripts/install-sysroot.py --arch=${{ matrix.arch }}
+          if [[ "${{ matrix.arch }}" == "arm64" || "${{ matrix.arch }}" == "x64" ]];then
+            INSTALL_SYSROOT_ARCH="amd64"
+          else
+            INSTALL_SYSROOT_ARCH="i386"
+          fi
+
+          python3 build/linux/sysroot_scripts/install-sysroot.py --arch=${INSTALL_SYSROOT_ARCH}
 
       - name: Show execution files
         run: |
