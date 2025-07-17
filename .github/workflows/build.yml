@@ -576,7 +576,7 @@ jobs:
 
       - name: Build ${{ matrix.arch }}-${{ matrix.build_type }}
         run:
-          & call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          & "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
           ninja -C out/windows v8_hello_world -v
 
       - name: Copy to dist folder
