@@ -555,27 +555,29 @@ jobs:
           mkdir -p ${CURRENT_DIR}/third_party/ninja
           cp ${NINJA_PATH} ${CURRENT_DIR}/third_party/ninja/
 
-      - name: Install llvm
+      - name: download llvm
         run: |
-          Invoke-WebRequest -OutFile llvm.zip https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.2/clang+llvm-19.1.2-x86_64-pc-windows-msvc.tar.xz
-          Expand-Archive llvm.zip -DestinationPath "D:\LLVM"
-          ls "D:\LLVM\bin"
-         
+          $version = "19.1.0"  # 
+          Invoke-WebRequest -Uri "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-win64.exe" -OutFile "llvm-installer.exe"
+
+      - name: Install LLVM
+        run: |
+         llvm-installer.exe /S /D="C:\Program Files\LLVM"
+         ls "C:\Program Files\LLVM\bin"
+
       - name: GN gen ${{ matrix.arch }}
         shell: cmd
         run: |
           dir C:\depot_tools          
           set DEPOT_TOOLS_WIN_TOOLCHAIN=0
-          set PATH="D:\LLVM\bin";C:\depot_tools;%PATH%
-          set CLANG_BASE_PATH="D:/LLVM"
-          set ARGS="is_clang=true use_lld=true is_debug=${{ env.IS_DEBUG }} target_cpu=""${{ matrix.arch }}"" v8_target_cpu=""${{ matrix.arch }}"" use_thin_lto=false use_lld=false clang_use_chrome_plugins=false chrome_pgo_phase=0 is_component_build=true use_custom_libcxx=false v8_use_external_startup_data=false is_official_build=false v8_enable_i18n_support=false treat_warnings_as_errors=false symbol_level=0 v8_enable_webassembly=true use_cxx17=true v8_enable_sandbox=false clang_base_path="%CLANG_BASE_PATH%""
+          set PATH="C:\Program Files\LLVM";C:\depot_tools;%PATH%
+          set ARGS="is_clang=true use_lld=true is_debug=${{ env.IS_DEBUG }} target_cpu=""${{ matrix.arch }}"" v8_target_cpu=""${{ matrix.arch }}"" use_thin_lto=false use_lld=false clang_use_chrome_plugins=false chrome_pgo_phase=0 is_component_build=true use_custom_libcxx=false v8_use_external_startup_data=false is_official_build=false v8_enable_i18n_support=false treat_warnings_as_errors=false symbol_level=0 v8_enable_webassembly=true use_cxx17=true v8_enable_sandbox=false clang_base_path=""C:/Program Files/LLVM"""
           gn gen out/windows --args=%ARGS%
 
       - name: Build ${{ matrix.arch }}-${{ matrix.build_type }}
         shell: cmd
         run: |
-          set PATH="D:\LLVM\bin";C:\depot_tools;%PATH%
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
+          set PATH="C:\Program Files\LLVM";C:\depot_tools;%PATH%
           ninja -C out/windows v8_hello_world -v
 
       - name: Copy to dist folder
