@@ -555,19 +555,11 @@ jobs:
           mkdir -p ${CURRENT_DIR}/third_party/ninja
           cp ${NINJA_PATH} ${CURRENT_DIR}/third_party/ninja/
 
-      - name: download llvm
+      - name: Install llvm
         run: |
-          $version = "19.1.0"  # 指定版本
-          Invoke-WebRequest -Uri "https://github.com/llvm/llvm-project/releases/download/llvmorg-$version/LLVM-$version-win64.exe" -OutFile "llvm-installer.exe"
-
-      - name: Install LLVM
-        run: |
-         Start-Process -Wait -FilePath .\llvm-installer.exe -ArgumentList @(
-              "/S",
-              "/AddLLVMToSystemPath=1",
-              "/D=`"D:\LLVM`""
-          )
-         ls "D:\LLVM\bin"
+          Invoke-WebRequest -OutFile llvm.zip https://github.com/llvm/llvm-project/releases/download/llvmorg-19.1.2/clang+llvm-19.1.2-x86_64-pc-windows-msvc.tar.xz
+          Expand-Archive llvm.zip -DestinationPath "D:\LLVM"
+          ls "D:\LLVM\bin"
          
       - name: GN gen ${{ matrix.arch }}
         shell: cmd
