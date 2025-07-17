@@ -562,7 +562,11 @@ jobs:
 
       - name: Install LLVM
         run: |
-         .\llvm-installer.exe /S /AddLLVMToSystemPath=1 /D="C:\LLVM" 
+         Start-Process -Wait -FilePath .\llvm-installer.exe -ArgumentList @(
+              "/S",
+              "/AddLLVMToSystemPath=1",
+              "/D=`"C:\LLVM`""
+          )
          ls "C:\LLVM\bin"
          
       - name: GN gen ${{ matrix.arch }}
