@@ -562,7 +562,7 @@ jobs:
 
       - name: Install LLVM
         run: |
-         llvm-installer.exe /S /D="C:\Program Files\LLVM"
+         ./llvm-installer.exe /S /D="C:\Program Files\LLVM"
          ls "C:\Program Files\LLVM\bin"
 
       - name: GN gen ${{ matrix.arch }}
