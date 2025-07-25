@@ -555,9 +555,12 @@ jobs:
           mkdir -p ${CURRENT_DIR}/third_party/ninja
           cp ${NINJA_PATH} ${CURRENT_DIR}/third_party/ninja/
 
-      - name: Install builtin clang
+      - name: Patch args
         run: |
-          python3 ./tools/clang/scripts/update.py
+          sed -i "s@MutatorMarkingState::BasicMarkingState::MarkNoPush@BasicMarkingState::MarkNoPush@g" src/heap/cppgc/marking-state.h.h
+
+          echo "---------- Show patch -----------"
+          git diff
 
       - name: GN gen ${{ matrix.arch }}
         shell: cmd
@@ -791,8 +794,8 @@ jobs:
 
       - name: Patch args
         run: |
-          touch ${HOME}/openharmony/hwsdk/openharmony/9/native/llvm/lib/arm-linux-ohos/c++/libatomic.a
-          touch ${HOME}/openharmony/hwsdk/openharmony/9/native/llvm/lib/aarch64-linux-ohos/c++/libatomic.a
+        
+          touch ${HOME}/openharmony/sdk/default/openharmony/native/llvm/lib/aarch64-linux-ohos/c++/libatomic.a
           sed -i "s@arm-linux-gnueabihf@arm-linux-ohos@g" build/config/compiler/BUILD.gn
           sed -i "s@aarch64-linux-gnu@aarch64-linux-ohos@g" build/config/compiler/BUILD.gn
           sed -i "s@\"-gsimple-template-names\"@@g" build/config/compiler/BUILD.gn
