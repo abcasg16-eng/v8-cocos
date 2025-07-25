@@ -559,6 +559,11 @@ jobs:
         run: |
           python3 ./tools/clang/scripts/update.py
 
+
+      - name: patch
+        run: |
+          sed -i "s@source_map.contains(positions[i].inlinee_func_index)@source_map.count(positions[i].inlinee_func_index) > 0@g" src/compiler/graph-visualizer.cc
+
       - name: GN gen ${{ matrix.arch }}
         shell: cmd
         run: |
