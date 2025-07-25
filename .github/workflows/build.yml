@@ -769,6 +769,7 @@ jobs:
       - name: Install builtin clang
         run: |
           python3 ./tools/clang/scripts/update.py
+          python3 ./tools/clang/scripts/build.py --bootstrap --without-android --without-fuchsia
 
       - name: Install linux sysroot
         run: |

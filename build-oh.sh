@@ -12,8 +12,8 @@ fi
 ARCH="$1"
 
 # Check if the argument value is "arm64", "arm", "x86" or "x64"
-if [ "${ARCH}" != "arm64" ] && [ "${ARCH}" != "arm" ] && [ "${ARCH}" != "x64" ] && [ "${ARCH}" != "x86" ]; then
-    echo "Architecture must be 'arm64', 'arm', 'x86' or 'x64'"
+if [ "${ARCH}" != "arm64" ]; then
+    echo "Architecture must be 'arm64'"
     exit 1
 fi
 
@@ -38,7 +38,7 @@ clang_use_chrome_plugins=false
 chrome_pgo_phase=0
 is_component_build=false
 v8_monolithic=true
-use_custom_libcxx=false
+use_custom_libcxx=true
 use_custom_libcxx_for_host=true
 is_debug=false
 v8_use_external_startup_data=false
@@ -51,13 +51,7 @@ use_cxx17=true
 v8_enable_fuzztest=false
 v8_enable_sandbox=false"
 
-if [[ "${ARCH}" == "arm" ]]; then
-	FINAL_ARGS="${ARGS}
-arm_float_abi=\"softfp\""
-else
-	FINAL_ARGS=${ARGS}
-fi
-
+FINAL_ARGS=${ARGS}
 
 echo "FINAL_ARGS:${FINAL_ARGS}"
 
