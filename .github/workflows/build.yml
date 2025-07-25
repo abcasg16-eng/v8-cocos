@@ -720,7 +720,7 @@ jobs:
           if [ ! -d "$HOME/openharmony" ]; then
             mkdir -p $HOME/openharmony
             echo "Download commandline-tools-linux.zip ..."
-            curl -o commandline-tools-linux.zip "https://contentcenter-vali-drcn.dbankcdn.cn/pvt_2/DeveloperAlliance_package_901_9/43/v3/o_Y4Yse1Q92FsF7m4sATVQ/commandline-tools-linux-x64-5.1.1.823.zip?HW-CC-KV=V1&HW-CC-Date=20250725T084635Z&HW-CC-Expire=7200&HW-CC-Sign=8027DC4EEF8F0BC153F40A867B402A894C429D55B53B2C3E1CBF7EF1CEEA50A3"
+            curl -o commandline-tools-linux.zip "https://contentcenter-vali-drcn.dbankcdn.cn/pvt_2/DeveloperAlliance_package_901_9/43/v3/o_Y4Yse1Q92FsF7m4sATVQ/commandline-tools-linux-x64-5.1.1.823.zip?HW-CC-KV=V1&HW-CC-Date=20250725T100526Z&HW-CC-Expire=7200&HW-CC-Sign=D1F63CD4A1EE5194CA9F47CE3DC57FFC6BED88C0746A44DDC6D7D005E5A0C523"
             echo "Unzip commandline-tools-linux.zip ..."
             unzip commandline-tools-linux.zip -d $HOME/openharmony > /dev/null
             cd $HOME/openharmony
@@ -769,7 +769,6 @@ jobs:
       - name: Install builtin clang
         run: |
           python3 ./tools/clang/scripts/update.py
-          python3 ./tools/clang/scripts/build.py --bootstrap --without-android --without-fuchsia
 
       - name: Install linux sysroot
         run: |
