@@ -20,7 +20,7 @@ fi
 # If there is 1 argument and its value is "arm64" or "x64", continue with the rest of the script
 echo "Valid architecture: ${ARCH}"
 
-OH_SDK_NATIVE_PATH=${HOME}/openharmony/sdk/default/openharmony/native
+OH_SDK_NATIVE_PATH=${HOME}/openharmony/command-line-tools/sdk/default/openharmony/native
 
 ls -l ${OH_SDK_NATIVE_PATH}
 
