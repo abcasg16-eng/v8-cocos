@@ -20,7 +20,7 @@ fi
 # If there is 1 argument and its value is "arm64" or "x64", continue with the rest of the script
 echo "Valid architecture: ${ARCH}"
 
-OH_SDK_NATIVE_PATH=${HOME}/openharmony/hwsdk/openharmony/9/native
+OH_SDK_NATIVE_PATH=${HOME}/openharmony/sdk/default/openharmony/native
 
 ls -l ${OH_SDK_NATIVE_PATH}
 
@@ -33,6 +33,7 @@ use_thin_lto=false
 use_lld=true
 use_gold=false
 use_glib=false
+clang_base_path=\"${OH_SDK_NATIVE_PATH}/llvm\"
 target_sysroot=\"${OH_SDK_NATIVE_PATH}/sysroot\"
 clang_use_chrome_plugins=false
 chrome_pgo_phase=0
