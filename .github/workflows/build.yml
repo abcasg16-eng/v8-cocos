@@ -557,7 +557,7 @@ jobs:
 
       - name: Patch args
         run: |
-          sed -i "s@MutatorMarkingState::BasicMarkingState::MarkNoPush@BasicMarkingState::MarkNoPush@g" src/heap/cppgc/marking-state.h.h
+          sed -i "s@MutatorMarkingState::BasicMarkingState::MarkNoPush@BasicMarkingState::MarkNoPush@g" src/heap/cppgc/marking-state.h
 
           echo "---------- Show patch -----------"
           git diff
@@ -709,7 +709,7 @@ jobs:
       
       - uses: actions/setup-node@v3
         with:
-          node-version: 14
+          node-version: 18
           cache: 'npm'
 
       - if: ${{ steps.cache-oh-sdk.outputs.cache-hit != 'true' }}
@@ -719,7 +719,7 @@ jobs:
           if [ ! -d "$HOME/openharmony" ]; then
             mkdir -p $HOME/openharmony
             echo "Download commandline-tools-linux.zip ..."
-            curl -o commandline-tools-linux.zip "https://contentcenter-vali-drcn.dbankcdn.cn/pvt_2/DeveloperAlliance_package_901_9/43/v3/o_Y4Yse1Q92FsF7m4sATVQ/commandline-tools-linux-x64-5.1.1.823.zip?HW-CC-KV=V1&HW-CC-Date=20250725T025938Z&HW-CC-Expire=7200&HW-CC-Sign=11026471942FE3E71C2923BFCF9DCED8A6AC3C1266E65ED989CCCDA8616861A2"
+            curl -o commandline-tools-linux.zip "https://contentcenter-vali-drcn.dbankcdn.cn/pvt_2/DeveloperAlliance_package_901_9/43/v3/o_Y4Yse1Q92FsF7m4sATVQ/commandline-tools-linux-x64-5.1.1.823.zip?HW-CC-KV=V1&HW-CC-Date=20250725T055525Z&HW-CC-Expire=7200&HW-CC-Sign=92D88ADC77B04B550258CB713379CB54D23A414A0EA06A434BCF57D873F713F4"
             echo "Unzip commandline-tools-linux.zip ..."
             unzip commandline-tools-linux.zip -d $HOME/openharmony > /dev/null
             cd $HOME/openharmony
