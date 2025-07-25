@@ -558,7 +558,8 @@ jobs:
       - name: Patch args
         run: |
           sed -i "s@MutatorMarkingState::BasicMarkingState::MarkNoPush@BasicMarkingState::MarkNoPush@g" src/heap/cppgc/marking-state.h
-
+          sed -i "s@class V8_EXPORT_PRIVATE ContextualVariable@class ContextualVariable@g" src/base/contextual.h
+          
           echo "---------- Show patch -----------"
           git diff
 
@@ -794,8 +795,6 @@ jobs:
 
       - name: Patch args
         run: |
-        
-          touch ${HOME}/openharmony/sdk/default/openharmony/native/llvm/lib/aarch64-linux-ohos/c++/libatomic.a
           sed -i "s@arm-linux-gnueabihf@arm-linux-ohos@g" build/config/compiler/BUILD.gn
           sed -i "s@aarch64-linux-gnu@aarch64-linux-ohos@g" build/config/compiler/BUILD.gn
           sed -i "s@\"-gsimple-template-names\"@@g" build/config/compiler/BUILD.gn
