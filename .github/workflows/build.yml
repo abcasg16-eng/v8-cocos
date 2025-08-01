@@ -564,7 +564,7 @@ jobs:
         run: |
           set DEPOT_TOOLS_WIN_TOOLCHAIN=0
           set VS_PATH=C:\Program Files\Microsoft Visual Studio\2022\Community
-          set PATH=%VS_PATH%\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64";C:\depot_tools;%PATH%
+          set PATH=%VS_PATH%\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64;C:\depot_tools;%PATH%
           set BUILD_TYPE=Release
           if /i "%matrix.build_type%"=="debug" (
               set BUILD_TYPE=Debug
