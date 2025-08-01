@@ -564,11 +564,11 @@ jobs:
         run: |
           set DEPOT_TOOLS_WIN_TOOLCHAIN=0
           set PATH="C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat";C:\depot_tools;%PATH%
-          set BUILD_TYPE="Release"
-          if [[ "${{matrix.build_type}}" == "debug" ]];then
-            set BUILD_TYPE="Debug"
-          fi
-          python3 build_windows.py --platform=x64 --libs=shared --config=${{ BUILD_TYPE }}
+          set BUILD_TYPE=Release
+          if /i "%matrix.build_type%"=="debug" (
+              set BUILD_TYPE=Debug
+          )
+          python3 build_windows.py --platform=x64 --libs=shared --config=%BUILD_TYPE%
 
       - name: Copy to dist folder
         shell: bash
