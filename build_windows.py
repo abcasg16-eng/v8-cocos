@@ -18,6 +18,14 @@ GN_OPTIONS = {
 	'treat_warnings_as_errors' : False,
 	'fatal_linker_warnings' : False,
 	'dcheck_always_on': False,
+	'v8_enable_i18n_support' : False,
+	'v8_enable_webassembly': True,
+	'v8_enable_fuzztest' : False,
+	'use_thin_lto' : False,
+	'v8_enable_sandbox' : False,
+	'chrome_pgo_phase' : 0,
+	'clang_use_chrome_plugins': False,
+	'is_official_build' : False,
 }
 
 def parse_to_dict(action, parser, namespace, values, option_string):
