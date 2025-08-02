@@ -264,8 +264,8 @@ for arch in args.PLATFORMS:
 	for lib in args.LIBS:
 		cpp_defines = ''
 		for conf in args.CONFIGURATIONS:
-			### Generate build.ninja files in v8/out.gn/V8_VERSION/toolset/arch/conf/lib directory
-			out_dir = os.path.join(os.getcwd(), 'out.gn', arch, conf, lib)
+			### Generate build.ninja files in v8/out/windows directory
+			out_dir = os.path.join(os.getcwd(), 'out', 'windows')
 			options = args.GN_OPTIONS
 			options['is_debug'] = (conf == 'Debug')
 			options['target_cpu'] = arch
