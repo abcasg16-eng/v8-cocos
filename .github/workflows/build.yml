@@ -520,6 +520,7 @@ jobs:
         run: |
           echo "env.IS_DEBUG=${{ env.IS_DEBUG }}"
           echo "----- python version -----"
+          vswhere.exe -all -products * -format json
           python --version
 
       - name: Clone DepotTools
@@ -562,8 +563,6 @@ jobs:
       - name: Build ${{ matrix.arch }}-${{ matrix.build_type }}
         shell: cmd
         run: |
-          echo Visual Studio installation path: %VSINSTALLDIR%
-          echo MSVC tools path: %VCToolsInstallDir%
           set DEPOT_TOOLS_WIN_TOOLCHAIN=0
           set "VS_PATH=C:\Program Files\Microsoft Visual Studio\2022\Community"
           set "PATH=%VS_PATH%\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64;C:\depot_tools;%PATH%"
