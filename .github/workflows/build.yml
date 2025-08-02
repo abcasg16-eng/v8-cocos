@@ -520,6 +520,8 @@ jobs:
         run: |
           echo "env.IS_DEBUG=${{ env.IS_DEBUG }}"
           echo "----- python version -----"
+          echo Visual Studio installation path: %VSINSTALLDIR%
+          echo MSVC tools path: %VCToolsInstallDir%
           python --version
 
       - name: Clone DepotTools
