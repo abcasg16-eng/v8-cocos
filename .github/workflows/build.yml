@@ -721,7 +721,7 @@ jobs:
             unzip commandline-tools-linux.zip -d $HOME/openharmony > /dev/null
             cd $HOME/openharmony
             ls -l
-            ls -l $HOME/openharmony/command-line-tools/sdk/default/openharmony/native
+            ls -l $HOME/openharmony/command-line-tools/sdk/default/openharmony/native/llvm/bin
           fi
 
       - name: Clone DepotTools
