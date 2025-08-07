@@ -641,7 +641,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [arm64, arm]
+        arch: [arm64]
     name: "Openharmony"
     runs-on: ubuntu-latest
     steps:
@@ -714,12 +714,14 @@ jobs:
         run: |
           if [ ! -d "$HOME/openharmony" ]; then
             mkdir -p $HOME/openharmony
+            echo $HOME/openharmony
             echo "Download commandline-tools-linux.zip from https://developer.huawei.com/consumer/cn/download/"
-            curl -o commandline-tools-linux.zip "https://contentcenter-vali-drcn.dbankcdn.cn/pvt_2/DeveloperAlliance_package_901_9/bd/v3/qopEGJtWRMWcIphjf-QilA/commandline-tools-windows-x64-5.0.13.220.zip?HW-CC-KV=V1&HW-CC-Date=20250807T032811Z&HW-CC-Expire=7200&HW-CC-Sign=3225ACCFFE1C03B4FE34DB4E2FDD89D1767A648A75FA8D4FF5F9A9CC32A67E65"
+            curl -o commandline-tools-linux.zip "https://contentcenter-vali-drcn.dbankcdn.cn/pvt_2/DeveloperAlliance_package_901_9/bd/v3/qopEGJtWRMWcIphjf-QilA/commandline-tools-windows-x64-5.0.13.220.zip?HW-CC-KV=V1&HW-CC-Date=20250807T091757Z&HW-CC-Expire=7200&HW-CC-Sign=41D517CF3471704EF094651A6D83FA31CDA49E4D35A47C8BA9FD1BB74B760920"
             echo "Unzip commandline-tools-linux.zip ..."
             unzip commandline-tools-linux.zip -d $HOME/openharmony > /dev/null
             cd $HOME/openharmony
             ls -l
+            ls -l $HOME/openharmony/command-line-tools/sdk/default/openharmony/native
           fi
 
       - name: Clone DepotTools
