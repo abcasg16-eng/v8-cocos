@@ -34,6 +34,7 @@ use_lld=true
 use_gold=false
 use_glib=false
 target_sysroot=\"${OH_SDK_NATIVE_PATH}/sysroot\"
+clang_base_path=\"${OH_SDK_NATIVE_PATH}/llvm\"
 clang_use_chrome_plugins=false
 chrome_pgo_phase=0
 is_component_build=false
