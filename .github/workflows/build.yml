@@ -716,7 +716,7 @@ jobs:
             mkdir -p $HOME/openharmony
             echo $HOME/openharmony
             echo "Download commandline-tools-linux.zip from https://developer.huawei.com/consumer/cn/download/"
-            curl -o commandline-tools-linux.zip "https://contentcenter-vali-drcn.dbankcdn.cn/pvt_2/DeveloperAlliance_package_901_9/cd/v3/aU6sXvKQTDGmmY-U36eR3Q/commandline-tools-linux-x64-5.1.1.830.zip?HW-CC-KV=V1&HW-CC-Date=20250808T063508Z&HW-CC-Expire=7200&HW-CC-Sign=90AA2A16DB038295B60D84C778EB42F176DDF89DCD1B63B8E018FFC1A68436DA"
+            curl -o commandline-tools-linux.zip "https://contentcenter-vali-drcn.dbankcdn.cn/pvt_2/DeveloperAlliance_package_901_9/cd/v3/aU6sXvKQTDGmmY-U36eR3Q/commandline-tools-linux-x64-5.1.1.830.zip?HW-CC-KV=V1&HW-CC-Date=20250808T095639Z&HW-CC-Expire=7200&HW-CC-Sign=7B38D66E8B02A6F7BFBE78CEA44A17E82001729CBAA1D65BA5F64732441FB724"
             echo "Unzip commandline-tools-linux.zip ..."
             unzip commandline-tools-linux.zip -d $HOME/openharmony > /dev/null
             cd $HOME/openharmony
