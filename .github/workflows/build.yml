@@ -792,8 +792,6 @@ jobs:
           sed -i "s@aarch64-linux-gnu@aarch64-linux-ohos@g" build/config/compiler/BUILD.gn
           sed -i "s@\"-gsimple-template-names\"@@g" build/config/compiler/BUILD.gn
           sed -i "s@strip_absolute_paths_from_debug_symbols = true@strip_absolute_paths_from_debug_symbols = false@g" build/config/compiler/compiler.gni
-          sed -i "s@Wno-thread-safety-reference-return@Wno-thread-safety-reference@g" build/config/compiler/BUILD.gn
-          sed -i "s@Wno-c++11-narrowing-const-reference@Wno-uninitialized-const-reference@g" build/config/compiler/BUILD.gn
           sed -i "s@,-mllvm,-split-threshold-for-reg-with-hint=0@@g" build/config/compiler/BUILD.gn
           sed -i '580,583d' build/config/compiler/BUILD.gn
           
