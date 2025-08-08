@@ -716,7 +716,7 @@ jobs:
             mkdir -p $HOME/openharmony
             echo $HOME/openharmony
             echo "Download commandline-tools-linux.zip from https://developer.huawei.com/consumer/cn/download/"
-            curl -o commandline-tools-linux.zip "https://contentcenter-vali-drcn.dbankcdn.cn/pvt_2/DeveloperAlliance_package_901_9/47/v3/ME-mD_6wSDi4tt1zVnkpVg/commandline-tools-linux-x64-5.0.13.220.zip?HW-CC-KV=V1&HW-CC-Date=20250807T093022Z&HW-CC-Expire=7200&HW-CC-Sign=026274AEEF244836C8EEF96BDC99D10F64A5CB06643C33D471A9F9F3B59E8F75"
+            curl -o commandline-tools-linux.zip "https://contentcenter-vali-drcn.dbankcdn.cn/pvt_2/DeveloperAlliance_package_901_9/cd/v3/aU6sXvKQTDGmmY-U36eR3Q/commandline-tools-linux-x64-5.1.1.830.zip?HW-CC-KV=V1&HW-CC-Date=20250808T055143Z&HW-CC-Expire=7200&HW-CC-Sign=D7AF9C15EC23780CED348DBBE7AD559A066010492606A81559B2B14EB20179C0"
             echo "Unzip commandline-tools-linux.zip ..."
             unzip commandline-tools-linux.zip -d $HOME/openharmony > /dev/null
             cd $HOME/openharmony
@@ -763,10 +763,6 @@ jobs:
           mkdir -p ${CURRENT_DIR}/third_party/ninja
           ln -s ${NINJA_PATH} ${CURRENT_DIR}/third_party/ninja/ninja
 
-      - name: Install builtin clang
-        run: |
-          python3 ./tools/clang/scripts/update.py
-
       - name: Install linux sysroot
         run: |
           if [[ "${{ matrix.arch }}" == "arm64" || "${{ matrix.arch }}" == "x64" ]];then
@@ -796,6 +792,10 @@ jobs:
           sed -i "s@aarch64-linux-gnu@aarch64-linux-ohos@g" build/config/compiler/BUILD.gn
           sed -i "s@\"-gsimple-template-names\"@@g" build/config/compiler/BUILD.gn
           sed -i "s@strip_absolute_paths_from_debug_symbols = true@strip_absolute_paths_from_debug_symbols = false@g" build/config/compiler/compiler.gni
+          sed -i "s@Wno-thread-safety-reference-return@Wno-thread-safety-reference@g" build/config/compiler/BUILD.gn
+          sed -i "s@Wno-c++11-narrowing-const-reference@Wno-uninitialized-const-reference@g" build/config/compiler/BUILD.gn
+          sed -i "s@,-mllvm,-split-threshold-for-reg-with-hint=0@@g" build/config/compiler/BUILD.gn
+          
           sed -i "s@__builtin_assume_aligned((ptr), (alignment))@(ptr)@g" include/v8config.h
           sed -i "s@if (is_ubsan && (v8_current_cpu@if ((v8_current_cpu@g" BUILD.gn
           if [[ "${{ matrix.arch }}" == "arm" || "${{ matrix.arch }}" == "x86" ]];then
