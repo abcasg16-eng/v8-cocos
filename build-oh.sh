@@ -58,4 +58,4 @@ echo "FINAL_ARGS:${FINAL_ARGS}"
 
 gn gen out/oh --args="${FINAL_ARGS}"
 
-ninja -C out/oh v8_monolith d8 -v
+ninja -C out/oh v8_monolith -v
