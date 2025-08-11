@@ -566,7 +566,7 @@ jobs:
           set DEPOT_TOOLS_WIN_TOOLCHAIN=0
           set "VS_PATH=C:/Program Files/Microsoft Visual Studio/2022/Enterprise"
           set "PATH=%VS_PATH%/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64;C:/depot_tools;%PATH%"
-          if "${{ matrix.build_type }}"=="x64-debug" (
+          if "${{ matrix.build_type }}"=="debug" (
               set BUILD_TYPE=Debug
           ) else (
               set BUILD_TYPE=Release
@@ -579,13 +579,14 @@ jobs:
       - name: Copy to dist folder
         shell: bash
         run: |
-          ls -l ./out/windows
+          BUILD_TYPE="${{ matrix.build_type }}"
+          ls -l ./out/windows_${BUILD_TYPE}
           echo "---------------------"
-          ls -l ./out/windows/obj
+          ls -l ./out/windows_${BUILD_TYPE}/obj
           mkdir dist
-          cp ./out/windows/*.exe ./dist/
-          cp ./out/windows/*.lib ./dist/
-          cp ./out/windows/*.dll ./dist/
+          cp ./out/windows_${BUILD_TYPE}/*.exe ./dist/
+          cp ./out/windows_${BUILD_TYPE}/*.lib ./dist/
+          cp ./out/windows_${BUILD_TYPE}/*.dll ./dist/
           cp -r ./include ./dist/
 
       - name: Upload artifact
@@ -644,7 +645,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [arm64]
+        arch: [arm64, x64]
     name: "Openharmony"
     runs-on: ubuntu-latest
     steps:
