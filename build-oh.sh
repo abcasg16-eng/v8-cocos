@@ -29,7 +29,6 @@ target_cpu=\"${ARCH}\"
 v8_target_cpu=\"${ARCH}\"
 is_clang=true
 enable_dsyms=false
-is_cfi=false
 use_thin_lto=false
 use_lld=true
 use_gold=false
