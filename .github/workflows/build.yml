@@ -792,9 +792,7 @@ jobs:
 
       - name: Patch args
         run: |
-          sed -i '1168a \
-            cflags += [ "--target=x86_64-linux-ohos" ]\
-            ldflags += [ "--target=x86_64-linux-ohos" ]' build/config/compiler/BUILD.gn
+          sed -i "s@arm-linux-gnueabihf@arm-linux-ohos@g" build/config/compiler/BUILD.gn
           sed -i "s@aarch64-linux-gnu@aarch64-linux-ohos@g" build/config/compiler/BUILD.gn
           sed -i "s@\"-gsimple-template-names\"@@g" build/config/compiler/BUILD.gn
           sed -i "s@strip_absolute_paths_from_debug_symbols = true@strip_absolute_paths_from_debug_symbols = false@g" build/config/compiler/compiler.gni
