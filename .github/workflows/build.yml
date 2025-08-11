@@ -570,6 +570,7 @@ jobs:
           if /i "%matrix.build_type%"=="x64-debug" (
               set BUILD_TYPE=Debug
           )
+          echo %matrix.build_type%
           echo %BUILD_TYPE%
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat" x64
           python3 build_windows.py --platform=x64 --libs=shared --config=%BUILD_TYPE%
