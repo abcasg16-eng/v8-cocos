@@ -12,8 +12,8 @@ fi
 ARCH="$1"
 
 # Check if the argument value is "arm64", "arm", "x86" or "x64"
-if [ "${ARCH}" != "arm64" ] && [ "${ARCH}" != "x64" ]; then
-    echo "Architecture must be 'arm64' or 'x64'"
+if [ "${ARCH}" != "arm64" ] && [ "${ARCH}" != "arm" ]; then
+    echo "Architecture must be 'arm64' or 'arm'"
     exit 1
 fi
 
